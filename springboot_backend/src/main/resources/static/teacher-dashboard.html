@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard | IGen</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        tailwind.config = { theme: { extend: { colors: { brand: { 50: '#eff6ff', 500: '#3b82f6', 600: '#2563eb', 900: '#1e3a8a' } } } } }
+    </script>
+
+    <style>
+        body { background: linear-gradient(135deg, #f0f9ff 0%, #e0e7ff 100%); min-height: 100vh; font-family: 'Inter', sans-serif; }
+        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.4); }
+        .upload-area { border: 2px dashed #cbd5e1; transition: all 0.3s ease; cursor: pointer; }
+        .upload-area:hover { border-color: #3b82f6; background-color: #eff6ff; }
+        .modal-overlay { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
+        .loader { border-top-color: #3b82f6; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+
+    <script>
+        function checkAuth() {
+            const userJson = localStorage.getItem('currentUser');
+            if (!userJson) { window.location.replace('login.html'); return false; }
+
+            try {
+                const user = JSON.parse(userJson);
+                if (user.role !== 'TEACHER') { window.location.replace('login.html'); return false; }
+            } catch (e) { window.location.replace('login.html'); return false; }
+            return true;
+        }
+
+        checkAuth();
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) checkAuth();
+        });
+    </script>
+</head>
+<body class="text-slate-800 antialiased">
+
+<nav class="bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-40">
+    <div class="flex items-center gap-2">
+        <i class="fa-solid fa-brain text-brand-600 text-2xl"></i>
+        <h1 class="text-xl font-bold text-slate-900 tracking-tight">IGen <span class="text-brand-600">Teacher</span></h1>
+    </div>
+    <div class="flex items-center gap-4 md:gap-6">
+        <span id="welcomeName" class="font-medium text-slate-600 hidden md:block"></span>
+        <button onclick="openModal('archiveModal'); loadArchives();" class="bg-purple-50 text-purple-600 px-4 py-2 rounded-lg font-semibold text-sm hover:bg-purple-100 transition-colors">
+            <i class="fa-solid fa-box-archive mr-2"></i>Archives
+        </button>
+        <button onclick="logout()" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-semibold text-sm hover:bg-red-100 transition-colors">
+            <i class="fa-solid fa-right-from-bracket mr-2"></i>Logout
+        </button>
+    </div>
+</nav>
+
+<div class="max-w-7xl mx-auto px-6 py-10">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+        <div>
+            <h2 class="text-4xl font-extrabold text-slate-900 tracking-tight">Scheduled Exams</h2>
+            <p class="text-slate-500 mt-2 text-lg">Manage your AI-generated assessments and view student performance.</p>
+        </div>
+        <button onclick="openModal('createModal')" class="bg-brand-600 hover:bg-brand-700 text-white px-8 py-4 rounded-2xl font-bold shadow-xl shadow-brand-200 transition-all flex items-center transform hover:-translate-y-1">
+            <i class="fa-solid fa-plus mr-2"></i> Create New Exam
+        </button>
+    </div>
+
+    <div id="examGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+    </div>
+</div>
+
+<div id="createModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto transform transition-all">
+        <div class="p-8 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
+            <h3 class="text-2xl font-bold text-slate-900">Configure New Exam</h3>
+            <button onclick="closeModal('createModal')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-circle-xmark text-2xl"></i></button>
+        </div>
+
+        <div class="p-8">
+            <form id="examForm">
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Exam Title</label>
+                    <input type="text" id="examTitle" placeholder="e.g., Mathematics Quiz - Unit 1" class="w-full rounded-xl border border-slate-200 px-4 py-3 focus:ring-2 focus:ring-brand-500 outline-none" required>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Subject Name</label>
+                        <input type="text" id="examSubject" placeholder="e.g., Database Management Systems" class="w-full rounded-xl border border-slate-200 px-4 py-3 focus:ring-2 focus:ring-brand-500 outline-none" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Target Semester</label>
+                        <select id="targetSemester" class="w-full rounded-xl border border-slate-200 px-4 py-3 focus:ring-2 focus:ring-brand-500 outline-none bg-white" required>
+                            <option value="">Select Target Semester...</option>
+                            <option value="1">Semester 1</option><option value="2">Semester 2</option>
+                            <option value="3">Semester 3</option><option value="4">Semester 4</option>
+                            <option value="5">Semester 5</option><option value="6">Semester 6</option>
+                            <option value="7">Semester 7</option><option value="8">Semester 8</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">Duration (Mins)</label>
+                        <input type="number" id="duration" value="30" class="w-full rounded-lg border border-slate-200 px-4 py-3 focus:ring-2 focus:ring-brand-500 outline-none" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">Start Time</label>
+                        <input type="datetime-local" id="startTime" class="w-full rounded-lg border border-slate-200 px-4 py-3 focus:ring-2 focus:ring-brand-500 outline-none" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">End Time</label>
+                        <input type="datetime-local" id="endTime" class="w-full rounded-lg border border-slate-200 px-4 py-3 focus:ring-2 focus:ring-brand-500 outline-none" required>
+                    </div>
+                </div>
+
+                <div class="border-t border-slate-200 my-8"></div>
+                <h4 class="text-lg font-bold text-slate-800 mb-4">Add Questions</h4>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                    <div class="bg-brand-50 p-6 rounded-2xl border border-brand-100">
+                        <h5 class="font-bold text-brand-900 mb-2"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Option 1: Auto-Generate with AI</h5>
+                        <p class="text-xs text-slate-600 mb-4">Upload a PDF and let IGen create MCQs instantly.</p>
+
+                        <div class="upload-area rounded-xl p-6 text-center bg-white mb-4" onclick="document.getElementById('pdfFile').click()">
+                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-300 mb-2"></i>
+                            <p class="text-slate-600 text-sm font-semibold">Upload PDF</p>
+                            <input type="file" id="pdfFile" accept=".pdf" class="hidden" onchange="updateFileName(this)">
+                        </div>
+                        <p id="fileNameDisplay" class="text-xs text-brand-600 font-bold mb-3 hidden text-center"></p>
+
+                        <div class="flex gap-2 mb-4">
+                            <input type="number" id="numQuestions" value="5" min="1" placeholder="Qty" class="w-20 rounded-lg border px-3 py-2 text-sm outline-none">
+                            <button type="button" onclick="runAI()" id="generateBtn" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-bold py-2 rounded-lg transition-all text-sm">
+                                Generate
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                        <h5 class="font-bold text-slate-800 mb-2"><i class="fa-solid fa-pen mr-2"></i>Option 2: Add Manually</h5>
+                        <p class="text-xs text-slate-500 mb-4">Type your own custom multiple-choice question.</p>
+
+                        <input type="text" id="manQText" placeholder="Question text..." class="w-full text-sm p-2.5 rounded-lg border mb-2 outline-none">
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                            <input type="text" id="manOptA" placeholder="Option A" class="text-sm p-2 rounded-lg border outline-none">
+                            <input type="text" id="manOptB" placeholder="Option B" class="text-sm p-2 rounded-lg border outline-none">
+                            <input type="text" id="manOptC" placeholder="Option C" class="text-sm p-2 rounded-lg border outline-none">
+                            <input type="text" id="manOptD" placeholder="Option D" class="text-sm p-2 rounded-lg border outline-none">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mb-3">
+                            <select id="manCorrect" class="w-full text-sm p-2.5 rounded-lg border outline-none bg-white">
+                                <option value="">Select Correct Answer...</option>
+                                <option value="A">Option A</option>
+                                <option value="B">Option B</option>
+                                <option value="C">Option C</option>
+                                <option value="D">Option D</option>
+                            </select>
+                            <input type="number" id="manMarks" placeholder="Marks (Default 1)" min="1" value="1" class="w-full text-sm p-2.5 rounded-lg border outline-none">
+                        </div>
+                        <button type="button" onclick="addManualQuestion()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-lg transition-all text-sm">
+                            Add to Exam
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <div id="loadingIndicator" class="hidden text-center py-10">
+                <div class="loader ease-linear rounded-full border-4 border-t-4 border-brand-500 h-10 w-10 mx-auto mb-4"></div>
+                <p class="text-slate-500 text-sm font-medium">AI is generating questions...</p>
+            </div>
+
+            <div id="resultsContainer" class="hidden mt-6">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h4 class="text-lg font-bold text-slate-800">Exam Preview</h4>
+                    <span id="qCountBadge" class="bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-full font-bold">0 Questions</span>
+                </div>
+
+                <div id="mcqList" class="space-y-4 max-h-[40vh] overflow-y-auto pr-2"></div>
+
+                <button onclick="saveExam()" id="saveBtn" class="mt-8 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-all flex justify-center items-center text-lg">
+                    <i class="fa-solid fa-check-double mr-2"></i> Save and Publish Exam
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="resultsModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col md:flex-row max-h-[90vh]">
+        <div class="w-full md:w-2/3 p-6 flex flex-col">
+            <div class="p-2 border-b bg-white flex justify-between items-center">
+                <h3 id="resModalTitle" class="text-xl font-bold text-slate-800">Student Results</h3>
+                <div>
+                    <button onclick="printResults()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm mr-2 transition-colors">
+                        <i class="fa-solid fa-print mr-1"></i> Print
+                    </button>
+                    <button onclick="closeModal('resultsModal')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+            </div>
+            <div class="overflow-y-auto flex-1 p-2">
+                <div id="printableTableArea">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                        <tr class="text-slate-500 text-xs font-bold uppercase tracking-widest border-b border-slate-200 bg-slate-50">
+                            <th class="p-3">Roll No</th>
+                            <th class="p-3">Student Name</th>
+                            <th class="p-3 text-right">Score</th>
+                            <th class="p-3 text-right">Percentage</th>
+                        </tr>
+                        </thead>
+                        <tbody id="resTableBody" class="divide-y divide-slate-100">
+                        </tbody>
+                    </table>
+                </div>
+                <div id="noResultsMsg" class="hidden text-center py-10 text-slate-400 font-bold">No student submissions recorded yet.</div>
+            </div>
+        </div>
+
+        <div class="w-full md:w-1/3 bg-slate-50 p-6 border-l flex flex-col items-center justify-start overflow-y-auto">
+            <h4 class="font-bold text-slate-700 mb-4">Class Performance</h4>
+            <div class="w-48 h-48 mb-6"><canvas id="analyticsChart"></canvas></div>
+            <div id="absentBadge" class="bg-red-50 text-red-700 border border-red-100 font-bold px-4 py-2 rounded-xl text-sm w-full text-center mb-6"></div>
+
+            <div class="w-full border-t border-slate-200 pt-6">
+                <button onclick="analyzeDifficulty()" id="analyzeBtn" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-3 rounded-xl font-bold transition-all w-full text-sm shadow-md flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-lightbulb"></i> Identify Hardest Questions
+                </button>
+                <div id="analysisResultArea" class="mt-4 space-y-3 w-full"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="archiveModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl w-full max-w-2xl p-8 shadow-2xl transform transition-all">
+        <div class="flex justify-between items-center mb-6 border-b pb-2">
+            <h3 class="text-2xl font-bold text-slate-900"><i class="fa-solid fa-box-archive text-purple-600 mr-2"></i>Your Exam Archives</h3>
+            <button onclick="closeModal('archiveModal')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div id="archiveList" class="space-y-3 max-h-[50vh] overflow-y-auto pr-2"></div>
+        <button onclick="closeModal('archiveModal')" class="mt-6 w-full bg-slate-100 hover:bg-slate-200 py-3 rounded-xl font-bold transition-colors">Close</button>
+    </div>
+</div>
+
+<div id="deleteModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 text-center">
+        <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-4"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <h3 class="text-xl font-bold text-slate-900 mb-2">Secure Archive & Delete</h3>
+        <p class="text-sm text-slate-500 mb-4">Enter your profile password to verify. Student records will be permanently bundled into a secure PDF archive before local deletion.</p>
+        <input type="password" id="deletePassword" placeholder="Your Password" class="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-red-500 mb-4">
+        <p id="deleteErr" class="text-red-500 text-sm font-bold hidden mb-4"></p>
+        <div class="flex gap-3">
+            <button onclick="closeModal('deleteModal')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-colors">Cancel</button>
+            <button onclick="confirmDelete()" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors">Archive & Delete</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.toString()
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    const u = JSON.parse(localStorage.getItem('currentUser'));
+    document.getElementById('welcomeName').innerText = u ? `Welcome, Prof. ${escapeHTML(u.username)}` : 'Welcome';
+
+    let generatedExamData = [];
+    let currentChart = null;
+    let targetDeleteExamId = null;
+    let currentViewExamId = null;
+
+    function logout() {
+        localStorage.removeItem('currentUser');
+        window.location.replace('login.html');
+    }
+
+    function openModal(id) {
+        document.getElementById(id).classList.remove('hidden');
+        if(id === 'createModal') {
+            generatedExamData = [];
+            document.getElementById('examForm').reset();
+            document.getElementById('fileNameDisplay').classList.add('hidden');
+            renderPreviewList();
+        }
+    }
+
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    function updateFileName(input) {
+        const display = document.getElementById('fileNameDisplay');
+        if(input.files[0]) {
+            display.innerHTML = `<i class="fa-solid fa-file-pdf mr-1"></i> ${escapeHTML(input.files[0].name)}`;
+            display.classList.remove('hidden');
+        }
+    }
+
+    // --- 1. DASHBOARD LOAD (WITH cleared filters & student toggles) ---
+    async function loadDashboard() {
+        const grid = document.getElementById('examGrid');
+        grid.innerHTML = '<div class="col-span-full text-center py-10"><i class="fa-solid fa-spinner fa-spin text-3xl text-slate-300"></i></div>';
+
+        try {
+            const res = await fetch('http://localhost:8080/api/exam/all');
+            const exams = await res.json();
+
+            grid.innerHTML = '';
+
+            // Filters based on creation authority or department parameters
+            const myExams = exams.filter(e => {
+                const iCreatedIt = e.createdByTeacherUsername && e.createdByTeacherUsername === u.email;
+                const iTeachTheSubject = e.departmentName === u.branchName && Array.isArray(u.subjects) && u.subjects.includes(e.subjectName);
+                return iCreatedIt || iTeachTheSubject;
+            });
+
+            if(myExams.length === 0) {
+                grid.innerHTML = '<p class="col-span-full text-center text-slate-400 py-20 bg-white/60 rounded-3xl border border-slate-200">No active operational metrics dashboards created for your subjects.</p>';
+                return;
+            }
+
+            myExams.forEach(exam => {
+                const isCreator = exam.createdByTeacherUsername === u.email;
+                const deleteBtn = isCreator ? `<button onclick="openDeleteModal(${exam.id})" class="text-slate-300 hover:text-red-500 transition-colors duration-200" title="Secure Archive & Delete"><i class="fa-solid fa-trash-can text-base"></i></button>` : '';
+                const visBtn = isCreator ? `<button onclick="toggleVisibility(${exam.id})" class="text-slate-300 hover:text-blue-500 transition-colors duration-200" title="Toggle Visibility"><i class="fa-solid ${exam.visibleToStudents ? 'fa-eye text-blue-500' : 'fa-eye-slash text-slate-400'} text-base"></i></button>` : '';
+
+                grid.innerHTML += `
+                        <div class="glass-card rounded-3xl p-8 hover:shadow-2xl transition-all group relative">
+                            <div class="flex justify-between items-start mb-4">
+                                <span class="bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">${escapeHTML(exam.status || 'PUBLISHED')}</span>
+                                <div class="flex items-center gap-3">
+                                    ${visBtn}
+                                    ${deleteBtn}
+                                </div>
+                            </div>
+                            <h3 class="text-xl font-bold text-slate-800 mb-2 group-hover:text-brand-600 transition-colors truncate pr-4" title="${escapeHTML(exam.title)}">${escapeHTML(exam.title) || 'Untitled Exam'}</h3>
+                            <p class="text-xs font-bold text-slate-400 mb-2">Sem ${exam.targetSemester || 'N/A'} <span class="text-slate-200 mx-1">|</span> ${escapeHTML(exam.departmentName)}</p>
+                            <span class="text-xs font-semibold text-brand-600 bg-brand-50 inline-block px-2.5 py-1 rounded-lg mb-6 border border-brand-100">${escapeHTML(exam.subjectName || 'General')}</span>
+                            <div class="text-sm text-slate-500 space-y-2 mb-6 border-t border-slate-100 pt-4">
+                                <p class="text-xs"><i class="fa-regular fa-calendar-check w-5 text-brand-500"></i> ${new Date(exam.startTime).toLocaleString()}</p>
+                                <p class="text-xs flex justify-between">
+                                    <span><i class="fa-regular fa-clock w-5 text-brand-500"></i> ${exam.durationMinutes} Mins</span>
+                                    <span class="text-slate-400 text-[11px] truncate max-w-[140px]" title="${escapeHTML(exam.createdByTeacherUsername)}"><i class="fa-solid fa-user-pen mr-1"></i>${escapeHTML(exam.createdByTeacherUsername)}</span>
+                                </p>
+                            </div>
+                            <button onclick="viewResults(${exam.id}, '${escapeHTML(exam.title)}')" class="w-full bg-slate-50 hover:bg-brand-600 hover:text-white text-slate-700 font-bold py-3 rounded-xl border border-slate-100 transition-all">
+                                Analyze Performance
+                            </button>
+                        </div>
+                    `;
+            });
+        } catch (e) { grid.innerHTML = '<p class="text-red-500 text-center col-span-full">Failed to connect to microservice cluster nodes.</p>'; }
+    }
+
+    // --- 2. AI QUESTION GENERATION (WITH STRATEGIC FORMAT MATCHING) ---
+    async function runAI() {
+        const fileInput = document.getElementById('pdfFile').files[0];
+        if(!fileInput) return alert("Please upload a PDF file first.");
+
+        const genBtn = document.getElementById('generateBtn');
+        genBtn.disabled = true;
+        genBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        document.getElementById('loadingIndicator').classList.remove('hidden');
+
+        const formData = new FormData();
+        formData.append("file", fileInput);
+        formData.append("num", document.getElementById('numQuestions').value);
+
+        try {
+            const response = await fetch('http://localhost:8080/api/exam/teacher/upload-notes', { method: 'POST', body: formData });
+            if (!response.ok) throw new Error("Server communication layout failure.");
+            const result = await response.json();
+
+            let mcqs = result.data || result;
+            if (typeof mcqs === 'string') {
+                mcqs = JSON.parse(mcqs.replace(/```json/g, '').replace(/```/g, '').trim());
+            }
+            if (!Array.isArray(mcqs)) {
+                mcqs = mcqs.data || mcqs.questions || mcqs.mcqs || [];
+            }
+
+            mcqs.forEach(q => {
+                const resolvedQuestion = q.questionText || q.question_text || q.question || q.Question || "Untitled Question";
+                const resolvedOptions = Array.isArray(q.options) ? q.options : (q.choices || q.answers || []);
+                let resolvedAnswer = q.correctAnswer || q.correct_answer || q.answer || q.correctOption || q.correct_option;
+
+                if (resolvedAnswer !== undefined && resolvedAnswer !== null) {
+                    const cleanAns = String(resolvedAnswer).trim();
+                    if (['A', 'B', 'C', 'D'].includes(cleanAns.toUpperCase())) {
+                        const mapping = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
+                        resolvedAnswer = resolvedOptions[mapping[cleanAns.toUpperCase()]];
+                    } else if (['0', '1', '2', '3'].includes(cleanAns)) {
+                        resolvedAnswer = resolvedOptions[parseInt(cleanAns)];
+                    }
+                }
+                if (!resolvedAnswer || String(resolvedAnswer) === 'undefined') {
+                    resolvedAnswer = q.correct || q.right_answer || q.rightAnswer || resolvedOptions[0] || "Option A";
+                }
+
+                generatedExamData.push({
+                    question: resolvedQuestion,
+                    options: resolvedOptions,
+                    answer: resolvedAnswer,
+                    marks: 1
+                });
+            });
+
+            renderPreviewList();
+        } catch (err) {
+            alert(`AI Processing pipeline broken: ${err.message}`);
+        } finally {
+            genBtn.disabled = false;
+            genBtn.innerText = 'Generate';
+            document.getElementById('loadingIndicator').classList.add('hidden');
+        }
+    }
+
+    // --- 3. MANUAL QUESTION ADDITION ---
+    function addManualQuestion() {
+        const qText = document.getElementById('manQText').value;
+        const optA = document.getElementById('manOptA').value;
+        const optB = document.getElementById('manOptB').value;
+        const optC = document.getElementById('manOptC').value;
+        const optD = document.getElementById('manOptD').value;
+        const correctRef = document.getElementById('manCorrect').value;
+        const marks = parseInt(document.getElementById('manMarks').value) || 1;
+
+        if(!qText || !optA || !optB || !optC || !optD || !correctRef) {
+            return alert("Please fill in the Question, all 4 Options, and select the Correct Answer.");
+        }
+
+        let answer = "";
+        if(correctRef === 'A') answer = optA;
+        if(correctRef === 'B') answer = optB;
+        if(correctRef === 'C') answer = optC;
+        if(correctRef === 'D') answer = optD;
+
+        generatedExamData.push({ question: qText, options: [optA, optB, optC, optD], answer: answer, marks: marks });
+
+        document.getElementById('manQText').value = '';
+        document.getElementById('manOptA').value = '';
+        document.getElementById('manOptB').value = '';
+        document.getElementById('manOptC').value = '';
+        document.getElementById('manOptD').value = '';
+        document.getElementById('manCorrect').value = '';
+        document.getElementById('manMarks').value = '1';
+
+        renderPreviewList();
+    }
+
+    function updateQuestionMarks(index, newMarks) {
+        generatedExamData[index].marks = parseInt(newMarks) || 1;
+    }
+
+    function renderPreviewList() {
+        const container = document.getElementById('resultsContainer');
+        const listDiv = document.getElementById('mcqList');
+
+        if(generatedExamData.length === 0) {
+            container.classList.add('hidden');
+            return;
+        }
+
+        document.getElementById('qCountBadge').innerText = `${generatedExamData.length} Questions`;
+        container.classList.remove('hidden');
+        listDiv.innerHTML = '';
+
+        generatedExamData.forEach((mcq, i) => {
+            const currentQuestionText = mcq.question_text || mcq.questionText || mcq.question || mcq.Question;
+            const ans = mcq.answer || mcq.correct_answer || mcq.correctAnswer || '';
+            const currentMarks = mcq.marks || 1;
+
+            listDiv.innerHTML += `
+                <div class="p-4 border border-slate-200 rounded-xl bg-slate-50 relative group pr-12">
+                    <button onclick="removeQuestion(${i})" type="button" class="absolute top-4 right-4 text-red-400 hover:text-red-600 transition-colors" title="Delete Question">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                    <p class="font-bold text-slate-800 mb-2 text-sm">Q${i+1}. ${escapeHTML(currentQuestionText)}</p>
+                    <div class="flex items-center gap-3 mt-3">
+                        <p class="text-[11px] font-bold text-emerald-700 bg-emerald-100 inline-block px-2 py-1 rounded border border-emerald-200">Ans: ${escapeHTML(ans)}</p>
+                        <div class="flex items-center gap-1 bg-white border border-slate-200 rounded px-2 py-1">
+                            <label class="text-[11px] font-bold text-slate-500 uppercase">Marks:</label>
+                            <input type="number" min="1" value="${currentMarks}" onchange="updateQuestionMarks(${i}, this.value)" class="w-12 text-xs text-center outline-none font-bold text-brand-600 bg-transparent">
+                        </div>
+                    </div>
+                </div>`;
+        });
+    }
+
+    function removeQuestion(index) {
+        generatedExamData.splice(index, 1);
+        renderPreviewList();
+    }
+
+    // --- 4. PUBLISH EXAM PROFILES ---
+    async function saveExam() {
+        const title = document.getElementById('examTitle').value;
+        const subj = document.getElementById('examSubject').value;
+        const sem = document.getElementById('targetSemester').value;
+        const dur = document.getElementById('duration').value;
+        const start = document.getElementById('startTime').value;
+        const end = document.getElementById('endTime').value;
+
+        if(!title || !subj || !sem || !dur || !start || !end) return alert("Please fill out all fields.");
+        if(generatedExamData.length === 0) return alert("Please add at least one question.");
+
+        const btn = document.getElementById('saveBtn');
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
+        btn.disabled = true;
+
+        const payload = {
+            title: title,
+            subjectName: subj,
+            targetSemester: parseInt(sem),
+            durationMinutes: parseInt(dur),
+            startTime: start,
+            endTime: end,
+            status: "PUBLISHED",
+            departmentName: u.branchName || u.departmentName || "General",
+            createdByTeacherUsername: u.email,
+            questions: generatedExamData.map(q => ({
+                questionText: q.question || q.questionText || q.question_text,
+                options: Array.isArray(q.options) ? q.options : Object.values(q.options),
+                correctAnswer: q.answer || q.correctAnswer || q.correct_answer,
+                marks: q.marks || 1
+            }))
+        };
+
+        try {
+            const res = await fetch(`http://localhost:8080/api/exam/teacher/save?username=${encodeURIComponent(u.email)}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+
+            if(res.ok) {
+                alert("Exam Published Successfully!");
+                closeModal('createModal');
+                loadDashboard();
+            } else {
+                alert("Database persistence failure structure.");
+            }
+        } catch (e) {
+            alert("Error connecting to server.");
+        } finally {
+            btn.innerHTML = '<i class="fa-solid fa-check-double mr-2"></i> Save and Publish Exam';
+            btn.disabled = false;
+        }
+    }
+
+    async function toggleVisibility(id) {
+        await fetch(`http://localhost:8080/api/exam/teacher/${id}/toggle-visibility`, { method: 'PUT' });
+        loadDashboard();
+    }
+
+    // --- 5. PERFORMANCE SHEET & SMART DIFFICULTY CALCULATOR ---
+    async function viewResults(id, title) {
+        currentViewExamId = id;
+        document.getElementById('resModalTitle').innerText = `Results: ${title}`;
+        document.getElementById('analysisResultArea').innerHTML = '';
+        openModal('resultsModal');
+        const tbody = document.getElementById('resTableBody');
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading operational logs...</td></tr>';
+        document.getElementById('noResultsMsg').classList.add('hidden');
+
+        try {
+            const [resData, statsData] = await Promise.all([
+                fetch(`http://localhost:8080/api/exam/results/exam/${id}`).then(r => r.json()),
+                fetch(`http://localhost:8080/api/exam/${id}/analytics`).then(r => r.json())
+            ]);
+            tbody.innerHTML = '';
+
+            if(resData.length === 0) {
+                document.getElementById('noResultsMsg').classList.remove('hidden');
+            } else {
+                resData.forEach(r => {
+                    const percentage = Math.round((r.marksObtained / r.totalMarks) * 100);
+                    const pctClass = percentage >= 40 ? 'text-green-600' : 'text-red-600';
+
+                    tbody.innerHTML += `
+                    <tr class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                        <td class="p-3 font-mono text-sm text-slate-500">${escapeHTML(r.rollNo) || 'N/A'}</td>
+                        <td class="p-3 font-medium text-slate-700">${escapeHTML(r.studentName)}</td>
+                        <td class="p-3 text-right font-bold text-brand-600">${r.marksObtained}/${r.totalMarks}</td>
+                        <td class="p-3 text-right font-black ${pctClass}">${percentage}%</td>
+                    </tr>`;
+                });
+            }
+
+            document.getElementById('absentBadge').innerText = `${statsData.absent || 0} Students Absent`;
+
+            if(currentChart) currentChart.destroy();
+            currentChart = new Chart(document.getElementById('analyticsChart').getContext('2d'), {
+                type: 'doughnut',
+                data: { labels: ['Passed', 'Failed'], datasets: [{ data: [statsData.passed || 0, statsData.failed || 0], backgroundColor: ['#10b981', '#ef4444'], borderWidth: 0 }] },
+                options: { responsive: true, cutout: '75%', plugins: { legend: { position: 'bottom' } } }
+            });
+        } catch(e) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-red-500 py-4">Error loading results mapping arrays.</td></tr>'; }
+    }
+
+    async function analyzeDifficulty() {
+        if(!currentViewExamId) return;
+        const btn = document.getElementById('analyzeBtn');
+        const area = document.getElementById('analysisResultArea');
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Analyzing...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch(`http://localhost:8080/api/exam/${currentViewExamId}/hardest-questions`);
+            const data = await res.json();
+
+            if(data.length === 0) {
+                area.innerHTML = '<p class="text-xs text-slate-400 text-center font-bold mt-2 bg-slate-100 p-3 rounded-xl border">No high-failure fields recorded yet (100% Correct Questions).</p>';
+                return;
+            }
+
+            let html = '<h5 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 mt-2">High-Failure Review Targets</h5>';
+            data.slice(0, 3).forEach(q => {
+                html += `
+                    <div class="bg-red-50 p-3 rounded-xl border border-red-200">
+                        <p class="font-bold text-red-900 text-xs mb-1 line-clamp-2">${escapeHTML(q[0])}</p>
+                        <p class="text-[10px] font-bold text-red-700 bg-red-100 inline-block px-2 py-0.5 rounded-full"><i class="fa-solid fa-users-slash mr-1"></i>Incorrect: ${q[1]} Student Submissions</p>
+                    </div>`;
+            });
+            area.innerHTML = html;
+        } catch(e) { area.innerHTML = '<p class="text-xs text-red-500 text-center font-bold">Failure matrix calculation broke.</p>'; }
+        finally { btn.innerHTML = '<i class="fa-solid fa-lightbulb"></i> Identify Hardest Questions'; btn.disabled = false; }
+    }
+
+    // --- 6. VAULT STORAGE & PASSWORDED DELETION FLOWS ---
+    async function loadArchives() {
+        const list = document.getElementById('archiveList');
+        list.innerHTML = '<p class="text-center text-slate-400 py-4"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Accessing storage cell...</p>';
+        try {
+            const res = await fetch(`http://localhost:8080/api/exam/my-archives?username=${u.email}`);
+            const data = await res.json();
+
+            list.innerHTML = data.length ? data.map(a => `
+                <div class="flex justify-between items-center p-4 border border-slate-200 rounded-xl bg-slate-50 hover:bg-white transition-all">
+                    <div>
+                        <p class="font-bold text-slate-800 text-sm">${escapeHTML(a.examTitle)}</p>
+                        <p class="text-[10px] text-slate-400">Encrypted Document Node ID: #${a.id}</p>
+                    </div>
+                    <button onclick="downloadArchive(${a.id})" class="bg-brand-600 hover:bg-brand-700 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">Download PDF</button>
+                </div>`).join('') : '<p class="text-slate-400 font-bold text-center py-6 bg-slate-50 border rounded-xl">No historical records saved in the archive node vault.</p>';
+        } catch(e) { list.innerHTML = '<p class="text-red-500 font-bold text-center">Pipeline exception accessing storage elements.</p>'; }
+    }
+
+    async function downloadArchive(id) {
+        const pwd = prompt("Enter security credentials to authorize export:");
+        if(!pwd) return;
+        const res = await fetch(`http://localhost:8080/api/exam/retrieve-archive/${id}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pwd, username: u.email })
+        });
+        if(res.ok) {
+            const blob = await res.blob();
+            const a = document.createElement('a'); a.href = window.URL.createObjectURL(blob); a.download = `ArchivedExam_${id}.pdf`; a.click();
+        } else alert("Authorization context exception: Cryptographic signature mismatch.");
+    }
+
+    function openDeleteModal(id) {
+        targetDeleteExamId = id;
+        document.getElementById('deleteErr').classList.add('hidden');
+        document.getElementById('deletePassword').value = '';
+        openModal('deleteModal');
+    }
+
+    async function confirmDelete() {
+        const pwd = document.getElementById('deletePassword').value;
+        const err = document.getElementById('deleteErr');
+        if (!pwd) {
+            err.innerText = "Verification signature required.";
+            err.classList.remove('hidden');
+            return;
+        }
+
+        try {
+            // 🚨 MATCHES THE UPDATED BACKEND PATH EXACTLY
+            const res = await fetch(`http://localhost:8080/api/exam/archive-delete/${targetDeleteExamId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    password: pwd,
+                    username: u.email
+                })
+            });
+
+            if (res.ok) {
+                closeModal('deleteModal');
+                loadDashboard(); // Refresh UI
+            } else {
+                const data = await res.json();
+                err.innerText = data.error || "Profile validation credentials incorrect.";
+                err.classList.remove('hidden');
+            }
+        } catch (e) {
+            console.error(e);
+            err.innerText = "Error: Could not reach server.";
+            err.classList.remove('hidden');
+        }
+    }
+
+    function printResults() {
+        const title = document.getElementById('resModalTitle').innerText;
+        const tableHtml = document.getElementById('printableTableArea').innerHTML;
+        const printWin = window.open('', '', 'height=600,width=800');
+        printWin.document.write('<html><head><title>Print ' + title + '</title>');
+        printWin.document.write(`
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+                h2 { text-align: center; border-bottom: 2px solid #ccc; padding-bottom: 10px; margin-bottom: 20px;}
+                table { width: 100%; border-collapse: collapse; }
+                th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+                th { background-color: #f8f9fa; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+                td:nth-child(3), th:nth-child(3), td:nth-child(4), th:nth-child(4) { text-align: right; }
+            </style>
+        `);
+        printWin.document.write('</head><body><h2>IGen: ' + title + '</h2>' + tableHtml + '</body></html>');
+        printWin.document.close();
+        printWin.focus();
+        setTimeout(() => { printWin.print(); printWin.close(); }, 250);
+    }
+
+    loadDashboard();
+</script>
+</body>
+</html>

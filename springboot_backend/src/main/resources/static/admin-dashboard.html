@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | IGen</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', sans-serif; background: #f8fafc; }</style>
+    <script>
+        const u = JSON.parse(localStorage.getItem('currentUser'));
+        if (!u || u.role !== 'ADMIN') window.location.replace('login.html');
+    </script>
+</head>
+<body class="p-8">
+
+<div class="max-w-6xl mx-auto">
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-900">System Administration</h1>
+            <p class="text-blue-600 font-bold mt-1 text-lg">Superuser Access</p>
+        </div>
+        <button onclick="localStorage.removeItem('currentUser'); window.location.replace('login.html');" class="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-lg font-bold transition-all">Logout</button>
+    </div>
+
+    <div class="flex gap-4 mb-8 border-b pb-2">
+        <button onclick="switchTab('approvals')" id="tab-approvals" class="font-bold text-blue-600 border-b-2 border-blue-600 px-4 py-2">Pending Approvals</button>
+        <button onclick="switchTab('users')" id="tab-users" class="font-bold text-slate-500 px-4 py-2 hover:text-blue-600 transition-colors">Manage Service Toggles</button>
+    </div>
+
+    <div id="view-approvals">
+        <div class="bg-white p-6 rounded-2xl shadow border border-slate-200">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2 text-slate-800">Pending Principal Registrations</h2>
+            <div id="approvalsList" class="space-y-4">
+                <p class="text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-users" class="hidden">
+        <div class="bg-white p-6 rounded-2xl shadow border border-slate-200 mb-8">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2 text-slate-800">Manage Account Access</h2>
+            <div id="userList" class="space-y-4">
+                <p class="text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading users...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function switchTab(tab) {
+        document.getElementById('view-approvals').classList.add('hidden');
+        document.getElementById('view-users').classList.add('hidden');
+        document.getElementById('tab-approvals').classList.replace('text-blue-600', 'text-slate-500');
+        document.getElementById('tab-approvals').classList.remove('border-b-2', 'border-blue-600');
+        document.getElementById('tab-users').classList.replace('text-blue-600', 'text-slate-500');
+        document.getElementById('tab-users').classList.remove('border-b-2', 'border-blue-600');
+
+        document.getElementById(`view-${tab}`).classList.remove('hidden');
+        document.getElementById(`tab-${tab}`).classList.replace('text-slate-500', 'text-blue-600');
+        document.getElementById(`tab-${tab}`).classList.add('border-b-2', 'border-blue-600');
+
+        if(tab === 'approvals') loadApprovals();
+        if(tab === 'users') loadUsers();
+    }
+
+    async function loadApprovals() {
+        const list = document.getElementById('approvalsList');
+        try {
+            const res = await fetch('http://localhost:8080/api/auth/admin/pending-principals');
+            const data = await res.json();
+
+            if (data.length === 0) {
+                list.innerHTML = '<p class="text-slate-400 font-bold bg-slate-50 p-4 rounded-xl text-center">No pending approvals.</p>';
+                return;
+            }
+
+            list.innerHTML = data.map(p => `
+                <div class="flex justify-between items-center p-4 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                    <div>
+                        <p class="font-bold text-slate-800">${p.name} <span class="text-xs font-bold bg-yellow-100 text-yellow-700 px-2 py-1 rounded ml-2">Pending Principal</span></p>
+                        <p class="text-sm text-slate-500 mt-1"><i class="fa-solid fa-building columns-1 mr-1"></i> ${p.collegeName} | <i class="fa-solid fa-envelope ml-2 mr-1"></i> ${p.username}</p>
+                    </div>
+                    <button onclick="approvePrincipal(${p.id})" class="bg-green-100 hover:bg-green-200 text-green-700 font-bold px-4 py-2 rounded-lg transition-colors">
+                        <i class="fa-solid fa-check mr-2"></i>Approve Account
+                    </button>
+                </div>
+            `).join('');
+        } catch (e) {
+            list.innerHTML = '<p class="text-red-500 font-bold">Error loading approvals. Is the backend running?</p>';
+        }
+    }
+
+    async function approvePrincipal(id) {
+        try {
+            await fetch(`http://localhost:8080/api/auth/admin/approve-principal/${id}`, { method: 'PUT' });
+            loadApprovals();
+        } catch (e) { alert("Failed to approve principal."); }
+    }
+
+    async function loadUsers() {
+        const list = document.getElementById('userList');
+        list.innerHTML = '<p class="text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading users...</p>';
+
+        try {
+            const [tRes, sRes] = await Promise.all([
+                fetch('http://localhost:8080/api/admin/teachers'),
+                fetch('http://localhost:8080/api/admin/students')
+            ]);
+
+            const teachers = await tRes.json();
+            const students = await sRes.json();
+
+            if (teachers.length === 0 && students.length === 0) {
+                list.innerHTML = '<p class="text-slate-400 font-bold bg-slate-50 p-4 rounded-xl text-center">No users found in the system.</p>';
+                return;
+            }
+
+            let html = '';
+
+            if (teachers.length > 0) {
+                html += '<h3 class="font-bold mt-4 mb-3 text-slate-700 uppercase tracking-wider text-xs">Staff & Principals</h3>';
+                teachers.forEach(t => {
+                    if (t.branchName === 'ADMIN') return;
+                    const statusBadge = t.active ? `<span class="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded ml-2">Active</span>` : `<span class="text-xs font-bold bg-red-100 text-red-700 px-2 py-1 rounded ml-2">Suspended</span>`;
+                    const actionBtn = t.active ? `<button onclick="toggleTeacher(${t.id})" class="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-4 py-2 rounded-lg text-sm border border-red-200">Suspend Access</button>` : `<button onclick="toggleTeacher(${t.id})" class="bg-green-50 hover:bg-green-100 text-green-600 font-bold px-4 py-2 rounded-lg text-sm border border-green-200">Restore Access</button>`;
+                    html += `<div class="flex justify-between items-center p-4 border border-slate-200 rounded-xl hover:bg-slate-50 mb-3 ${!t.active ? 'opacity-60' : ''}">
+                        <div><p class="font-bold text-slate-800 text-lg">${t.name} ${statusBadge}</p><p class="text-sm text-slate-500 mt-1"><i class="fa-solid fa-building mr-1"></i> ${t.collegeName} | <i class="fa-solid fa-user-tie ml-2 mr-1"></i> ${t.principal ? 'Principal' : 'Teacher'}</p></div>${actionBtn}</div>`;
+                });
+            }
+
+            if (students.length > 0) {
+                html += '<h3 class="font-bold mt-8 mb-3 text-slate-700 uppercase tracking-wider text-xs">Students</h3>';
+                students.forEach(s => {
+                    const statusBadge = s.active ? `<span class="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded ml-2">Active</span>` : `<span class="text-xs font-bold bg-red-100 text-red-700 px-2 py-1 rounded ml-2">Suspended</span>`;
+                    const actionBtn = s.active ? `<button onclick="toggleStudent(${s.id})" class="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-4 py-2 rounded-lg text-sm border border-red-200">Suspend Access</button>` : `<button onclick="toggleStudent(${s.id})" class="bg-green-50 hover:bg-green-100 text-green-600 font-bold px-4 py-2 rounded-lg text-sm border border-green-200">Restore Access</button>`;
+                    html += `<div class="flex justify-between items-center p-4 border border-slate-200 rounded-xl hover:bg-slate-50 mb-3 ${!s.active ? 'opacity-60' : ''}">
+                        <div><p class="font-bold text-slate-800 text-lg">${s.name} ${statusBadge}</p><p class="text-sm text-slate-500 mt-1"><i class="fa-solid fa-building mr-1"></i> ${s.collegeName} | <i class="fa-solid fa-id-card ml-2 mr-1"></i> ${s.rollNo}</p></div>${actionBtn}</div>`;
+                });
+            }
+
+            list.innerHTML = html;
+        } catch (e) { list.innerHTML = '<p class="text-red-500 font-bold">Error loading user data.</p>'; }
+    }
+
+    async function toggleTeacher(id) {
+        try { await fetch(`http://localhost:8080/api/admin/toggle-teacher/${id}`, { method: 'PUT' }); loadUsers(); } catch (e) { alert("Failed."); }
+    }
+
+    async function toggleStudent(id) {
+        try { await fetch(`http://localhost:8080/api/admin/toggle-student/${id}`, { method: 'PUT' }); loadUsers(); } catch (e) { alert("Failed."); }
+    }
+
+    switchTab('approvals');
+</script>
+</body>
+</html>

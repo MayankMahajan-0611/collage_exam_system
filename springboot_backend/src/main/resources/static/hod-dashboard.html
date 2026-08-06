@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HOD Dashboard | IGen</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f8fafc; }
+        .modal-overlay { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
+        .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; }
+        .tab-inactive { color: #64748b; }
+        .upload-area { border: 2px dashed #cbd5e1; transition: all 0.3s ease; cursor: pointer; }
+        .upload-area:hover { border-color: #3b82f6; background-color: #eff6ff; }
+        .loader { border-top-color: #3b82f6; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="p-8">
+
+<div class="max-w-7xl mx-auto bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8 flex justify-between items-center">
+    <div>
+        <h1 class="text-2xl font-black text-slate-900 tracking-tight">Departmental HOD Portal</h1>
+        <p id="deptHeader" class="text-purple-600 font-bold mt-1 text-sm"></p>
+    </div>
+    <div class="flex gap-3">
+        <button onclick="localStorage.removeItem('currentUser'); window.location.replace('login.html');" class="bg-red-50 text-red-600 hover:bg-red-100 px-5 py-2.5 rounded-xl font-bold text-sm transition-all">
+            Logout
+        </button>
+    </div>
+</div>
+
+<div class="max-w-7xl mx-auto">
+    <div class="flex flex-wrap gap-6 mb-8 border-b border-slate-200">
+        <button onclick="switchTab('exams')" id="tab-exams" class="font-bold py-3 tab-active transition-colors">Department Exams</button>
+        <button onclick="switchTab('staff-approval')" id="tab-staff-approval" class="font-bold py-3 tab-inactive hover:text-purple-600 transition-colors">Staff Directory & Approvals</button>
+        <button onclick="switchTab('term-increment')" id="tab-term-increment" class="font-bold py-3 tab-inactive hover:text-purple-600 transition-colors">Departmental Term Shift</button>
+    </div>
+
+    <div id="view-exams">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold text-slate-900 tracking-tight">Departmental Exam Records</h2>
+            <button onclick="openModal('createExamModal')" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2.5 rounded-xl font-semibold transition-colors flex items-center gap-2 shadow-sm text-sm">
+                <i class="fa-solid fa-plus"></i> Configure New Exam
+            </button>
+        </div>
+        <div id="examGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+    </div>
+
+    <div id="view-staff-approval" class="hidden">
+        <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">Pending Branch Staff Requests</h2>
+        <div id="pendingStaffList" class="space-y-4 mb-8"></div>
+
+        <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-4">Active Staff Directory</h2>
+        <div id="activeStaffList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    </div>
+
+    <div id="view-term-increment" class="hidden">
+        <h2 class="text-xl font-bold text-slate-900 tracking-tight mb-6">Mid-Term Semester Increment Engine</h2>
+        <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 max-w-2xl">
+            <p class="text-slate-500 mb-6 text-sm leading-relaxed">
+                Executing this operation will increment the operational semester tracker by exactly <span class="font-bold text-purple-600">+1 Step</span> for all active students registered under your specific branch. Class configurations, roll numbers, and historical grade registries remain safely locked.
+            </p>
+            <button onclick="executeBranchTermIncrement()" id="runSemBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-sm flex items-center gap-2">
+                <i class="fa-solid fa-calendar-plus"></i> Increment Branch Semesters Only
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="createExamModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto transform transition-all">
+        <div class="p-8 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
+            <h3 class="text-xl font-bold text-slate-900">Configure Departmental Exam</h3>
+            <button onclick="closeModal('createExamModal')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-circle-xmark text-2xl"></i></button>
+        </div>
+
+        <div class="p-8">
+            <form id="createExamForm">
+                <div class="mb-6">
+                    <label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Exam Title</label>
+                    <input type="text" id="examTitle" placeholder="e.g., Database Systems Internal Assessment 1" class="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-500" required>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">Subject Name</label>
+                        <input type="text" id="examSubject" placeholder="e.g., DBMS" class="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">Target Semester</label>
+                        <select id="targetSemester" class="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none bg-white focus:border-purple-500" required>
+                            <option value="">Select target term...</option>
+                            <option value="1">Semester 1</option><option value="2">Semester 2</option>
+                            <option value="3">Semester 3</option><option value="4">Semester 4</option>
+                            <option value="5">Semester 5</option><option value="6">Semester 6</option>
+                            <option value="7">Semester 7</option><option value="8">Semester 8</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">Duration (Mins)</label>
+                        <input type="number" id="duration" value="35" class="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">Start Time</label>
+                        <input type="datetime-local" id="startTime" class="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">End Time</label>
+                        <input type="datetime-local" id="endTime" class="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-500" required>
+                    </div>
+                </div>
+
+                <div class="border-t border-slate-200 my-8"></div>
+                <h4 class="text-lg font-bold text-slate-800 mb-4">Add Questions</h4>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                    <div class="bg-blue-50 p-6 rounded-2xl border border-blue-100">
+                        <h5 class="font-bold text-blue-900 mb-2"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Option 1: Auto-Generate with AI</h5>
+                        <p class="text-xs text-slate-600 mb-4">Upload a PDF and let IGen create MCQs instantly.</p>
+
+                        <div class="upload-area rounded-xl p-6 text-center bg-white mb-4" onclick="document.getElementById('pdfFile').click()">
+                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-300 mb-2"></i>
+                            <p class="text-slate-600 text-sm font-semibold">Upload PDF</p>
+                            <input type="file" id="pdfFile" accept=".pdf" class="hidden" onchange="updateFileName(this)">
+                        </div>
+                        <p id="fileNameDisplay" class="text-xs text-blue-600 font-bold mb-3 hidden text-center"></p>
+
+                        <div class="flex gap-2 mb-4">
+                            <input type="number" id="numQuestions" value="5" min="1" placeholder="Qty" class="w-20 rounded-lg border px-3 py-2 text-sm outline-none">
+                            <button type="button" onclick="runAI()" id="generateBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg transition-all text-sm">
+                                Generate
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                        <h5 class="font-bold text-slate-800 mb-2"><i class="fa-solid fa-pen mr-2"></i>Option 2: Add Manually</h5>
+                        <p class="text-xs text-slate-500 mb-4">Type your own custom multiple-choice question.</p>
+
+                        <input type="text" id="manQText" placeholder="Question text..." class="w-full text-sm p-2.5 rounded-lg border mb-2 outline-none">
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                            <input type="text" id="manOptA" placeholder="Option A" class="text-sm p-2 rounded-lg border outline-none">
+                            <input type="text" id="manOptB" placeholder="Option B" class="text-sm p-2 rounded-lg border outline-none">
+                            <input type="text" id="manOptC" placeholder="Option C" class="text-sm p-2 rounded-lg border outline-none">
+                            <input type="text" id="manOptD" placeholder="Option D" class="text-sm p-2 rounded-lg border outline-none">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mb-3">
+                            <select id="manCorrect" class="w-full text-sm p-2.5 rounded-lg border outline-none bg-white">
+                                <option value="">Select Correct Answer...</option>
+                                <option value="A">Option A</option>
+                                <option value="B">Option B</option>
+                                <option value="C">Option C</option>
+                                <option value="D">Option D</option>
+                            </select>
+                            <input type="number" id="manMarks" placeholder="Marks (Default 1)" min="1" value="1" class="w-full text-sm p-2.5 rounded-lg border outline-none">
+                        </div>
+                        <button type="button" onclick="addQuestionToMemory()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-lg transition-all text-sm">
+                            Inject Into Blueprint List
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <div id="loadingIndicator" class="hidden text-center py-10">
+                <div class="loader ease-linear rounded-full border-4 border-t-4 border-blue-500 h-10 w-10 mx-auto mb-4"></div>
+                <p class="text-slate-500 text-sm font-medium">AI is generating questions...</p>
+            </div>
+
+            <div id="resultsContainer" class="hidden mt-6">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h4 class="text-sm font-bold text-slate-800">Exam Question Matrix Preview</h4>
+                    <span id="qCountBadge" class="bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-full font-bold">0 Questions</span>
+                </div>
+                <div id="mcqList" class="space-y-3 max-h-[35vh] overflow-y-auto pr-1"></div>
+                <button onclick="commitExamToDatabase()" id="saveBtn" class="mt-6 w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3.5 rounded-2xl shadow-md transition-all text-sm flex justify-center items-center">
+                    Publish Exam to Live Department Terminal
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.toString()
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    // INTERCEPTOR EXTENSION
+    (function() {
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            let [resource, config] = args;
+            config = config || {};
+            config.headers = config.headers || {};
+            const sessionUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+            if (sessionUser.collegeName) {
+                config.headers['X-College-Name'] = sessionUser.collegeName;
+            }
+            return originalFetch(resource, config);
+        };
+    })();
+
+    const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const branchName = user.branchName || user.department || 'Computer Science Engineering';
+    document.getElementById('deptHeader').innerText = `${escapeHTML(branchName)} | ${escapeHTML(user.collegeName || 'Tech Institute')}`;
+
+    let generatedExamData = [];
+
+    function openModal(id) {
+        document.getElementById(id).classList.remove('hidden');
+        if(id === 'createExamModal') {
+            generatedExamData = [];
+            document.getElementById('createExamForm').reset();
+            document.getElementById('fileNameDisplay').classList.add('hidden');
+            document.getElementById('resultsContainer').classList.add('hidden');
+        }
+    }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    function updateFileName(input) {
+        const display = document.getElementById('fileNameDisplay');
+        if(input.files[0]) {
+            display.innerHTML = `<i class="fa-solid fa-file-pdf mr-1"></i> ${escapeHTML(input.files[0].name)}`;
+            display.classList.remove('hidden');
+        }
+    }
+
+    function switchTab(tab) {
+        ['exams', 'staff-approval', 'term-increment'].forEach(t => {
+            const view = document.getElementById('view-' + t);
+            const btn = document.getElementById('tab-' + t);
+            if(view && btn) {
+                if(t === tab) {
+                    view.classList.remove('hidden');
+                    btn.classList.replace('tab-inactive', 'tab-active');
+                } else {
+                    view.classList.add('hidden');
+                    btn.classList.replace('tab-active', 'tab-inactive');
+                }
+            }
+        });
+
+        if(tab === 'exams') loadBranchExams();
+        if(tab === 'staff-approval') { loadPendingStaff(); loadActiveStaff(); }
+    }
+
+    // LOAD BRANCH EXAMS
+    async function loadBranchExams() {
+        const grid = document.getElementById('examGrid');
+        grid.innerHTML = '<p class="text-xs text-slate-400 col-span-full">Syncing exams...</p>';
+        try {
+            const res = await fetch(`http://localhost:8080/api/hod/exams?branchName=${encodeURIComponent(branchName)}`);
+            const exams = await res.json();
+            grid.innerHTML = exams.map(e => `
+                <div class="bg-white border rounded-2xl p-5 shadow-sm flex flex-col h-full">
+                    <h3 class="font-bold text-slate-800 text-md mb-1 truncate">${escapeHTML(e.title)}</h3>
+                    <p class="text-[10px] font-bold text-purple-600 uppercase mb-4 tracking-wider">Sem ${e.targetSemester} | ${escapeHTML(e.subjectName || 'General')}</p>
+                    <div class="text-xs text-slate-500 space-y-1 mb-4 border-t pt-3">
+                        <p><i class="fa-regular fa-clock text-purple-500 mr-1"></i> ${e.durationMinutes} Mins</p>
+                        <p class="truncate"><i class="fa-regular fa-user text-slate-400 mr-1"></i> ${escapeHTML(e.createdByTeacherUsername || 'Instructor')}</p>
+                    </div>
+                </div>
+            `).join('') || '<p class="text-xs text-slate-400 col-span-full">No tests declared in this department yet.</p>';
+        } catch(e) { grid.innerHTML = '<p class="text-xs text-red-500 col-span-full">Failed to sync exams.</p>'; }
+    }
+
+    // STAFF DIRECTORY QUEUES
+    async function loadPendingStaff() {
+        const list = document.getElementById('pendingStaffList');
+        try {
+            const res = await fetch(`http://localhost:8080/api/hod/staff/pending?branchName=${encodeURIComponent(branchName)}`);
+            const data = await res.json();
+            list.innerHTML = data.length ? data.map(p => `
+                <div class="flex justify-between items-center bg-white border border-slate-200 p-4 rounded-xl shadow-sm text-sm">
+                    <div>
+                        <p class="font-bold text-slate-800">${escapeHTML(p.name)}</p>
+                        <p class="text-xs text-slate-500">ID: ${escapeHTML(p.employeeId)} | <span class="font-mono text-[11px]">${escapeHTML(p.username)}</span></p>
+                    </div>
+                    <button onclick="approveStaffMember(${p.id})" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg font-bold text-xs shadow-sm transition-all">Approve Account</button>
+                </div>
+            `).join('') : '<div class="text-xs text-slate-400 bg-slate-50 p-4 rounded-xl border border-dashed">No applications waiting.</div>';
+        } catch(e) { list.innerHTML = '<p class="text-xs text-red-500">Error loading data.</p>'; }
+    }
+
+    async function loadActiveStaff() {
+        const grid = document.getElementById('activeStaffList');
+        try {
+            const res = await fetch(`http://localhost:8080/api/hod/staff/active?branchName=${encodeURIComponent(branchName)}`);
+            const data = await res.json();
+            grid.innerHTML = data.map(t => `
+                <div class="bg-white border p-4 rounded-xl shadow-sm text-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-slate-800">${escapeHTML(t.name)}</span>
+                            <span class="text-[9px] bg-slate-100 font-extrabold text-slate-600 px-2 py-0.5 rounded-md">${escapeHTML(t.role)}</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-mono">${escapeHTML(t.username)}</p>
+                    </div>
+                </div>
+            `).join('') || '<p class="text-xs text-slate-400 col-span-full">No active department faculty mapped.</p>';
+        } catch(e) { grid.innerHTML = '<p class="text-xs text-red-500 col-span-full">Failed to sync listings.</p>'; }
+    }
+
+    async function approveStaffMember(id) {
+        try {
+            const res = await fetch(`http://localhost:8080/api/hod/staff/approve/${id}?authorizedBranch=${encodeURIComponent(branchName)}`, { method: 'PUT' });
+            if(res.ok) { loadPendingStaff(); loadActiveStaff(); }
+        } catch(e) { alert("Error connecting to server."); }
+    }
+
+    // AI AUTO-GENERATION PROCESSING SUITE
+    async function runAI() {
+        const fileInput = document.getElementById('pdfFile').files[0];
+        if(!fileInput) return alert("Please upload a PDF file first.");
+
+        const genBtn = document.getElementById('generateBtn');
+        genBtn.disabled = true;
+        genBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        document.getElementById('loadingIndicator').classList.remove('hidden');
+
+        const formData = new FormData();
+        formData.append("file", fileInput);
+        formData.append("num", document.getElementById('numQuestions').value);
+
+        try {
+            const response = await fetch('http://localhost:8080/api/hod/upload-notes', {
+                method: 'POST',
+                body: formData
+            });
+            if (!response.ok) throw new Error("Server communication layout failure.");
+            const result = await response.json();
+
+            let mcqs = result.data || result;
+            if (typeof mcqs === 'string') {
+                mcqs = JSON.parse(mcqs.replace(/```json/g, '').replace(/```/g, '').trim());
+            }
+            if (!Array.isArray(mcqs)) {
+                mcqs = mcqs.data || mcqs.questions || mcqs.mcqs || [];
+            }
+
+            mcqs.forEach(q => {
+                const resolvedQuestion = q.questionText || q.question_text || q.question || q.Question || "Untitled Question";
+                const resolvedOptions = Array.isArray(q.options) ? q.options : (q.choices || q.answers || []);
+                let resolvedAnswer = q.correctAnswer || q.correct_answer || q.answer || q.correctOption || q.correct_option;
+
+                if (resolvedAnswer !== undefined && resolvedAnswer !== null) {
+                    const cleanAns = String(resolvedAnswer).trim();
+                    if (['A', 'B', 'C', 'D'].includes(cleanAns.toUpperCase())) {
+                        const mapping = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
+                        resolvedAnswer = resolvedOptions[mapping[cleanAns.toUpperCase()]];
+                    } else if (['0', '1', '2', '3'].includes(cleanAns)) {
+                        resolvedAnswer = resolvedOptions[parseInt(cleanAns)];
+                    }
+                }
+                if (!resolvedAnswer || String(resolvedAnswer) === 'undefined') {
+                    resolvedAnswer = q.correct || q.right_answer || q.rightAnswer || resolvedOptions[0] || "Option A";
+                }
+
+                generatedExamData.push({
+                    questionText: resolvedQuestion,
+                    options: resolvedOptions,
+                    correctAnswer: resolvedAnswer,
+                    marks: 1
+                });
+            });
+
+            renderQuestionBlueprintPreview();
+        } catch (err) {
+            alert(`AI Processing pipeline broken: ${err.message}`);
+        } finally {
+            genBtn.disabled = false;
+            genBtn.innerText = 'Generate';
+            document.getElementById('loadingIndicator').classList.add('hidden');
+        }
+    }
+
+    // EXAM COMPILATION PIPELINE
+    function addQuestionToMemory() {
+        const qText = document.getElementById('manQText').value.trim();
+        const optA = document.getElementById('manOptA').value.trim();
+        const optB = document.getElementById('manOptB').value.trim();
+        const optC = document.getElementById('manOptC').value.trim();
+        const optD = document.getElementById('manOptD').value.trim();
+        const correctRef = document.getElementById('manCorrect').value;
+        const marks = parseInt(document.getElementById('manMarks').value) || 1;
+
+        if(!qText || !optA || !optB || !optC || !optD || !correctRef) return alert("Fill out all question data variants.");
+
+        let answer = "";
+        if(correctRef === 'A') answer = optA;
+        if(correctRef === 'B') answer = optB;
+        if(correctRef === 'C') answer = optC;
+        if(correctRef === 'D') answer = optD;
+
+        generatedExamData.push({ questionText: qText, options: [optA, optB, optC, optD], correctAnswer: answer, marks: marks });
+
+        document.getElementById('manQText').value = '';
+        document.getElementById('manOptA').value = ''; document.getElementById('manOptB').value = '';
+        document.getElementById('manOptC').value = ''; document.getElementById('manOptD').value = '';
+        document.getElementById('manCorrect').value = ''; document.getElementById('manMarks').value = '1';
+
+        renderQuestionBlueprintPreview();
+    }
+
+    function renderQuestionBlueprintPreview() {
+        const container = document.getElementById('resultsContainer');
+        const listDiv = document.getElementById('mcqList');
+        if(generatedExamData.length === 0) { container.classList.add('hidden'); return; }
+
+        document.getElementById('qCountBadge').innerText = `${generatedExamData.length} Cards`;
+        container.classList.remove('hidden');
+        listDiv.innerHTML = generatedExamData.map((q, idx) => `
+            <div class="p-3 border rounded-xl bg-slate-50 relative pr-10 text-xs">
+                <p class="font-bold text-slate-800 mb-1">Q${idx+1}. ${escapeHTML(q.questionText)}</p>
+                <p class="text-[10px] text-emerald-700 bg-emerald-50 inline-block px-1.5 rounded border border-emerald-100 font-medium">Ans: ${escapeHTML(q.correctAnswer)}</p>
+            </div>
+        `).join('');
+    }
+
+    async function commitExamToDatabase() {
+        const title = document.getElementById('examTitle').value;
+        const subj = document.getElementById('examSubject').value;
+        const sem = document.getElementById('targetSemester').value;
+        const dur = document.getElementById('duration').value;
+        const start = document.getElementById('startTime').value;
+        const end = document.getElementById('endTime').value;
+
+        if(!title || !subj || !sem || !dur || !start || !end) return alert("Fill all header configurations.");
+        if(generatedExamData.length === 0) return alert("Add at least one card question.");
+
+        const btn = document.getElementById('saveBtn');
+        btn.disabled = true; btn.innerText = "Syncing terminal metadata...";
+
+        const payload = {
+            title: title, subjectName: subj, targetSemester: parseInt(sem),
+            durationMinutes: parseInt(dur), startTime: start, endTime: end,
+            createdByTeacherUsername: user.username || "HOD Admin",
+            questions: generatedExamData
+        };
+
+        try {
+            const res = await fetch(`http://localhost:8080/api/hod/exams/save?branchName=${encodeURIComponent(branchName)}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if(res.ok) {
+                alert("Exam live registry active.");
+                closeModal('createExamModal');
+                loadBranchExams();
+            } else { alert("Failed to save branch blueprint mapping structure."); }
+        } catch(e) { alert("Server error connection."); }
+        finally { btn.disabled = false; btn.innerText = "Publish Exam to Live Department Terminal"; }
+    }
+
+    async function executeBranchTermIncrement() {
+        if(!confirm(`Advance all semesters for "${branchName}"?`)) return;
+        const btn = document.getElementById('runSemBtn');
+        btn.disabled = true; btn.innerHTML = 'Processing...';
+        try {
+            const res = await fetch(`http://localhost:8080/api/hod/increment-semester?branchName=${encodeURIComponent(branchName)}`, { method: 'POST' });
+            if(res.ok) alert("Branch term updated forward.");
+        } catch(e) { alert("Error connecting."); }
+        finally { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-calendar-plus"></i> Increment Branch Semesters Only'; }
+    }
+
+    // Initial Load Execution Sequence
+    loadBranchExams();
+</script>
+</body>
+</html>
