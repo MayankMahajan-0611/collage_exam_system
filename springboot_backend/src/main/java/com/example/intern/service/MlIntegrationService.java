@@ -13,7 +13,7 @@ import java.util.Map;
 @Service
 public class MlIntegrationService {
 
-    private final String FLASK_API_URL = "http://python-service:5000/generate_mcq";
+    private final String FLASK_API_URL = "http://localhoat:5000/generate_mcq";
 
     public String generateQuestionsFromText(String text, int num) {
 
