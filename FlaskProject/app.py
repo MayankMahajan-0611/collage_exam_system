@@ -37,7 +37,7 @@ def generate():
 
         # 3. AI CALL
         response = ollama.chat(
-            model='llama3',
+            model='llama3:8b',
             messages=[{'role': 'user', 'content': prompt}],
             format='json'
         )
