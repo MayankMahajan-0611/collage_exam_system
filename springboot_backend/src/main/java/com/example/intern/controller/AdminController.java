@@ -31,7 +31,7 @@ public class AdminController {
         teacherRepository.save(teacher);
 
         String status = teacher.isActive() ? "Restored" : "Suspended";
-        return ResponseEntity.ok(Map.of("message", "Teacher account has been " + status));
+        return ResponseEntity.ok(Map.of("message", "Teacher account  been " + status));
     }
 
     // ==========================================
