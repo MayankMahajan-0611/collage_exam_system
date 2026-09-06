@@ -174,7 +174,7 @@
 
             <div id="loadingIndicator" class="hidden text-center py-10">
                 <div class="loader ease-linear rounded-full border-4 border-t-4 border-brand-500 h-10 w-10 mx-auto mb-4"></div>
-                <p class="text-slate-500 text-sm font-medium">AI is generating questions...</p>
+                <p id="loadingStatusText" class="text-slate-500 text-sm font-medium">AI is generating questions...</p>
             </div>
 
             <div id="resultsContainer" class="hidden mt-6">
@@ -308,7 +308,7 @@
         }
     }
 
-    // --- 1. DASHBOARD LOAD (WITH cleared filters & student toggles) ---
+    // --- 1. DASHBOARD LOAD ---
     async function loadDashboard() {
         const grid = document.getElementById('examGrid');
         grid.innerHTML = '<div class="col-span-full text-center py-10"><i class="fa-solid fa-spinner fa-spin text-3xl text-slate-300"></i></div>';
@@ -319,7 +319,6 @@
 
             grid.innerHTML = '';
 
-            // Filters based on creation authority or department parameters
             const myExams = exams.filter(e => {
                 const iCreatedIt = e.createdByTeacherUsername && e.createdByTeacherUsername === u.email;
                 const iTeachTheSubject = e.departmentName === u.branchName && Array.isArray(u.subjects) && u.subjects.includes(e.subjectName);
@@ -364,7 +363,7 @@
         } catch (e) { grid.innerHTML = '<p class="text-red-500 text-center col-span-full">Failed to connect to microservice cluster nodes.</p>'; }
     }
 
-    // --- 2. AI QUESTION GENERATION (WITH STRATEGIC FORMAT MATCHING) ---
+    // --- 2. ASYNC AI QUESTION GENERATION WITH POLLING ---
     async function runAI() {
         const fileInput = document.getElementById('pdfFile').files[0];
         if(!fileInput) return alert("Please upload a PDF file first.");
@@ -372,58 +371,98 @@
         const genBtn = document.getElementById('generateBtn');
         genBtn.disabled = true;
         genBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-        document.getElementById('loadingIndicator').classList.remove('hidden');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const statusText = document.getElementById('loadingStatusText');
+        loadingIndicator.classList.remove('hidden');
+        statusText.innerText = "Initializing AI analysis...";
 
         const formData = new FormData();
         formData.append("file", fileInput);
-        formData.append("num", document.getElementById('numQuestions').value);
+        const numQuestions = document.getElementById('numQuestions').value || 5;
 
         try {
-            const response = await fetch('http://localhost:8080/api/exam/teacher/upload-notes', { method: 'POST', body: formData });
-            if (!response.ok) throw new Error("Server communication layout failure.");
-            const result = await response.json();
-
-            let mcqs = result.data || result;
-            if (typeof mcqs === 'string') {
-                mcqs = JSON.parse(mcqs.replace(/```json/g, '').replace(/```/g, '').trim());
-            }
-            if (!Array.isArray(mcqs)) {
-                mcqs = mcqs.data || mcqs.questions || mcqs.mcqs || [];
-            }
-
-            mcqs.forEach(q => {
-                const resolvedQuestion = q.questionText || q.question_text || q.question || q.Question || "Untitled Question";
-                const resolvedOptions = Array.isArray(q.options) ? q.options : (q.choices || q.answers || []);
-                let resolvedAnswer = q.correctAnswer || q.correct_answer || q.answer || q.correctOption || q.correct_option;
-
-                if (resolvedAnswer !== undefined && resolvedAnswer !== null) {
-                    const cleanAns = String(resolvedAnswer).trim();
-                    if (['A', 'B', 'C', 'D'].includes(cleanAns.toUpperCase())) {
-                        const mapping = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
-                        resolvedAnswer = resolvedOptions[mapping[cleanAns.toUpperCase()]];
-                    } else if (['0', '1', '2', '3'].includes(cleanAns)) {
-                        resolvedAnswer = resolvedOptions[parseInt(cleanAns)];
-                    }
-                }
-                if (!resolvedAnswer || String(resolvedAnswer) === 'undefined') {
-                    resolvedAnswer = q.correct || q.right_answer || q.rightAnswer || resolvedOptions[0] || "Option A";
-                }
-
-                generatedExamData.push({
-                    question: resolvedQuestion,
-                    options: resolvedOptions,
-                    answer: resolvedAnswer,
-                    marks: 1
-                });
+            // Step 1: Trigger background job
+            const uploadRes = await fetch(`http://localhost:8080/api/exam/teacher/upload-notes?num=${numQuestions}`, {
+                method: 'POST',
+                body: formData
             });
 
-            renderPreviewList();
+            if (!uploadRes.ok) {
+                const errJson = await uploadRes.json().catch(() => ({ error: "Failed to initialize background processing pipeline." }));
+                throw new Error(errJson.error || "Failed to initialize background processing pipeline.");
+            }
+
+            const uploadData = await uploadRes.json();
+            const jobId = uploadData.jobId;
+
+            if (!jobId) throw new Error("Missing Job ID assignment from server node.");
+
+            // Step 2: Poll status endpoint every 3 seconds
+            await new Promise((resolve, reject) => {
+                const interval = setInterval(async () => {
+                    try {
+                        const statusRes = await fetch(`http://localhost:8080/api/exam/teacher/ai-status/${jobId}`);
+
+                        if (statusRes.status === 202) {
+                            statusText.innerText = "AI is still generating questions (Llama 3 active)...";
+                            return;
+                        }
+
+                        if (statusRes.ok) {
+                            clearInterval(interval);
+                            const responseText = await statusRes.text();
+                            let rawResult;
+                            try {
+                                rawResult = JSON.parse(responseText);
+                            } catch (e) {
+                                rawResult = responseText;
+                            }
+
+                            let mcqs = rawResult;
+                            if (typeof mcqs === 'string') {
+                                mcqs = JSON.parse(mcqs.replace(/```json/g, '').replace(/```/g, '').trim());
+                            }
+                            if (mcqs && mcqs.data) mcqs = mcqs.data;
+                            if (mcqs && mcqs.questions) mcqs = mcqs.questions;
+                            if (!Array.isArray(mcqs)) {
+                                mcqs = [mcqs];
+                            }
+
+                            generatedExamData = []; // Clear previous drafts
+
+                            mcqs.forEach(q => {
+                                const resolvedQuestion = q.question || q.questionText || q.question_text || "Untitled Question";
+                                const resolvedOptions = Array.isArray(q.options) ? q.options : [];
+                                const resolvedAnswer = q.answer || q.correctAnswer || q.correct_answer || resolvedOptions[0] || "";
+
+                                generatedExamData.push({
+                                    question: resolvedQuestion,
+                                    options: resolvedOptions,
+                                    answer: resolvedAnswer,
+                                    marks: 1
+                                });
+                            });
+
+                            renderPreviewList();
+                            resolve();
+                        } else if (statusRes.status === 500) {
+                            clearInterval(interval);
+                            const errData = await statusRes.json().catch(() => ({ error: "AI background thread execution failed." }));
+                            reject(new Error(errData.error));
+                        }
+                    } catch (err) {
+                        clearInterval(interval);
+                        reject(err);
+                    }
+                }, 3000);
+            });
+
         } catch (err) {
             alert(`AI Processing pipeline broken: ${err.message}`);
         } finally {
             genBtn.disabled = false;
             genBtn.innerText = 'Generate';
-            document.getElementById('loadingIndicator').classList.add('hidden');
+            loadingIndicator.classList.add('hidden');
         }
     }
 
@@ -478,18 +517,26 @@
         listDiv.innerHTML = '';
 
         generatedExamData.forEach((mcq, i) => {
-            const currentQuestionText = mcq.question_text || mcq.questionText || mcq.question || mcq.Question;
-            const ans = mcq.answer || mcq.correct_answer || mcq.correctAnswer || '';
+            const currentQuestionText = mcq.question || mcq.questionText || mcq.question_text || "Untitled Question";
+            const options = Array.isArray(mcq.options) ? mcq.options : [];
+            const ans = mcq.answer || mcq.correctAnswer || mcq.correct_answer || '';
             const currentMarks = mcq.marks || 1;
 
+            let optionsHtml = options.map((opt, idx) => `
+                <div class="text-xs text-slate-600 pl-4 py-0.5 ${opt === ans ? 'font-bold text-emerald-600 bg-emerald-50 rounded' : ''}">
+                    ${String.fromCharCode(65 + idx)}. ${escapeHTML(opt)} ${opt === ans ? '<i class="fa-solid fa-check ml-1 text-emerald-600"></i>' : ''}
+                </div>
+            `).join('');
+
             listDiv.innerHTML += `
-                <div class="p-4 border border-slate-200 rounded-xl bg-slate-50 relative group pr-12">
+                <div class="p-4 border border-slate-200 rounded-xl bg-slate-50 relative group pr-12 mb-3">
                     <button onclick="removeQuestion(${i})" type="button" class="absolute top-4 right-4 text-red-400 hover:text-red-600 transition-colors" title="Delete Question">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                     <p class="font-bold text-slate-800 mb-2 text-sm">Q${i+1}. ${escapeHTML(currentQuestionText)}</p>
-                    <div class="flex items-center gap-3 mt-3">
-                        <p class="text-[11px] font-bold text-emerald-700 bg-emerald-100 inline-block px-2 py-1 rounded border border-emerald-200">Ans: ${escapeHTML(ans)}</p>
+                    <div class="space-y-1 mb-3">${optionsHtml}</div>
+                    <div class="flex items-center justify-between mt-3 pt-2 border-t border-slate-200">
+                        <p class="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded border border-emerald-200">Correct: ${escapeHTML(ans)}</p>
                         <div class="flex items-center gap-1 bg-white border border-slate-200 rounded px-2 py-1">
                             <label class="text-[11px] font-bold text-slate-500 uppercase">Marks:</label>
                             <input type="number" min="1" value="${currentMarks}" onchange="updateQuestionMarks(${i}, this.value)" class="w-12 text-xs text-center outline-none font-bold text-brand-600 bg-transparent">
@@ -687,7 +734,6 @@
         }
 
         try {
-            // 🚨 MATCHES THE UPDATED BACKEND PATH EXACTLY
             const res = await fetch(`http://localhost:8080/api/exam/archive-delete/${targetDeleteExamId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -699,7 +745,7 @@
 
             if (res.ok) {
                 closeModal('deleteModal');
-                loadDashboard(); // Refresh UI
+                loadDashboard();
             } else {
                 const data = await res.json();
                 err.innerText = data.error || "Profile validation credentials incorrect.";

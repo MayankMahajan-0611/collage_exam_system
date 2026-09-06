@@ -4,7 +4,11 @@ import com.example.intern.model.Student;
 import com.example.intern.model.Teacher;
 import com.example.intern.repository.StudentRepository;
 import com.example.intern.repository.TeacherRepository;
+import com.example.intern.service.RefreshTokenService;
+import com.example.intern.model.RefreshToken;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +23,7 @@ public class UserController {
 
     @Autowired private StudentRepository studentRepository;
     @Autowired private TeacherRepository teacherRepository;
+    @Autowired private RefreshTokenService refreshTokenService;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -60,7 +65,6 @@ public class UserController {
                 staff.setBranchName(payload.get("departmentName"));
                 staff.setEmployeeId(payload.get("employeeId"));
 
-                // 🚨 NEW: Parse comma-separated subjects into a List
                 if (payload.get("subjects") != null && !payload.get("subjects").isBlank()) {
                     List<String> subjectList = Arrays.stream(payload.get("subjects").split(","))
                             .map(String::trim).collect(Collectors.toList());
@@ -100,7 +104,10 @@ public class UserController {
                 response.put("rollNo", s.getRollNo());
                 response.put("collegeName", s.getCollegeName());
                 response.put("departmentName", s.getDepartmentName());
-                return ResponseEntity.ok(response);
+
+                // 🚨 Generate Refresh Token Cookie for Student
+                ResponseCookie jwtRefreshCookie = generateRefreshTokenCookie(username);
+                return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, jwtRefreshCookie.toString()).body(response);
             }
         }
 
@@ -117,15 +124,13 @@ public class UserController {
                 response.put("username", t.getName());
                 response.put("email", t.getUsername());
 
-                // 🚨 FIXED: Safe structural validation without type-mismatch compilation errors
                 String roleAssignment = "TEACHER";
-
                 if (t.isPrincipal()) {
                     roleAssignment = "PRINCIPAL";
                 } else if (t.getRole() != null) {
                     String dbRole = String.valueOf(t.getRole()).trim();
                     if (!dbRole.isEmpty()) {
-                        roleAssignment = dbRole.toUpperCase(); // Accurately dynamically passes "HOD" or "TEACHER"
+                        roleAssignment = dbRole.toUpperCase();
                     }
                 } else if ("ADMIN".equals(t.getBranchName())) {
                     roleAssignment = "ADMIN";
@@ -134,17 +139,76 @@ public class UserController {
                 response.put("role", roleAssignment);
                 response.put("collegeName", t.getCollegeName());
                 response.put("branchName", t.getBranchName());
-
-                // Pass subjects back to frontend session
                 response.put("subjects", t.getSubjects() != null ? t.getSubjects() : new ArrayList<>());
 
-                return ResponseEntity.ok(response);
+                // 🚨 Generate Refresh Token Cookie for Teacher
+                ResponseCookie jwtRefreshCookie = generateRefreshTokenCookie(username);
+                return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, jwtRefreshCookie.toString()).body(response);
             }
         }
 
         return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials."));
     }
-    // Workflows...
+
+    // ==========================================
+    // NEW: REFRESH & LOGOUT ENDPOINTS
+    // ==========================================
+
+    // Helper method to keep login code clean
+    private ResponseCookie generateRefreshTokenCookie(String username) {
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(username);
+        return ResponseCookie.from("refreshToken", refreshToken.getToken())
+                .httpOnly(true)
+                .secure(false) // TODO: Set to true in production when using HTTPS
+                .path("/api/auth/refresh")
+                .maxAge(7 * 24 * 60 * 60) // 7 Days
+                .build();
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refreshToken(@CookieValue(name = "refreshToken", required = false) String requestRefreshToken) {
+        if (requestRefreshToken == null || requestRefreshToken.isEmpty()) {
+            return ResponseEntity.status(403).body(Map.of("error", "Refresh Token is missing!"));
+        }
+
+        try {
+            return refreshTokenService.findByToken(requestRefreshToken)
+                    .map(refreshTokenService::verifyExpiration)
+                    .map(RefreshToken::getUsername)
+                    .map(username -> {
+                        // Here is where you would issue a new Short-Lived Access JWT if you are using one
+                        Map<String, String> response = new HashMap<>();
+                        response.put("message", "Token refreshed successfully");
+                        return ResponseEntity.ok(response);
+                    })
+                    .orElseThrow(() -> new RuntimeException("Refresh token is not in database!"));
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(@RequestBody(required = false) Map<String, String> payload) {
+        if (payload != null && payload.containsKey("username")) {
+            refreshTokenService.deleteByUsername(payload.get("username"));
+        }
+
+        // Overwrite the cookie with a blank, expired one to destroy it in the browser
+        ResponseCookie deleteCookie = ResponseCookie.from("refreshToken", "")
+                .httpOnly(true)
+                .secure(false)
+                .path("/api/auth/refresh")
+                .maxAge(0)
+                .build();
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, deleteCookie.toString())
+                .body(Map.of("message", "Logged out successfully"));
+    }
+
+    // ==========================================
+    // EXISTING WORKFLOWS
+    // ==========================================
     @GetMapping("/admin/pending-principals")
     public ResponseEntity<List<Teacher>> getPendingPrincipals() { return ResponseEntity.ok(teacherRepository.findByIsPrincipalTrueAndIsApprovedFalse()); }
 

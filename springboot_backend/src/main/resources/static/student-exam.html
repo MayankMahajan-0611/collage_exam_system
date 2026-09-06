@@ -33,7 +33,7 @@
         </div>
 
         <div>
-            <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">My Past Results</h2>
+            <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">My Past Results & Status</h2>
             <div id="pastResults" class="space-y-4">
                 <p class="text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading results...</p>
             </div>
@@ -46,13 +46,20 @@
     document.getElementById('welcomeMsg').innerText = `Welcome, ${user.username} (${user.departmentName})`;
 
     async function loadStudentData() {
-        // --- 1. FETCH TARGETED EXAMS ---
-        try {
-            const examRes = await fetch(`http://localhost:8080/api/exam/student/available?rollNo=${encodeURIComponent(user.rollNo)}`);
-            const examDiv = document.getElementById('availableExams');
+        const now = new Date();
 
+        try {
+            const [examRes, resRes, allExamsRes] = await Promise.all([
+                fetch(`http://localhost:8080/api/exam/student/available?rollNo=${encodeURIComponent(user.rollNo)}`),
+                fetch(`http://localhost:8080/api/exam/results/student/${encodeURIComponent(user.username)}`),
+                fetch(`http://localhost:8080/api/exam/all`)
+            ]);
+
+            const examDiv = document.getElementById('availableExams');
+            const resDiv = document.getElementById('pastResults');
+
+            // --- PROCESS AVAILABLE EXAMS ---
             if (!examRes.ok) {
-                // If the backend throws a 400/403/500 error (like "missing semester")
                 const errData = await examRes.json();
                 examDiv.innerHTML = `<p class="text-red-600 font-bold bg-red-50 p-4 rounded-xl text-center border border-red-100"><i class="fa-solid fa-circle-exclamation mr-2"></i>${errData.error || "Failed to load exams."}</p>`;
             } else {
@@ -61,11 +68,10 @@
                 if(!Array.isArray(exams) || exams.length === 0) {
                     examDiv.innerHTML = `<p class="text-slate-500 font-bold bg-slate-100 p-4 rounded-xl text-center border border-slate-200">No active exams currently available for your class.</p>`;
                 } else {
-                    // Render the exams, including the new subjectName property
                     examDiv.innerHTML = exams.map(e => `
                         <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-blue-400 transition-all">
-                            <h3 class="font-bold text-lg text-slate-800 mb-1">${e.title}</h3>
-                            <p class="text-xs font-bold text-blue-600 bg-blue-50 inline-block px-2 py-1 rounded-md mb-4">${e.subjectName || 'General Subject'}</p>
+                            <h3 class="font-bold text-lg text-slate-800 mb-1">${escapeHTML(e.title)}</h3>
+                            <p class="text-xs font-bold text-blue-600 bg-blue-50 inline-block px-2 py-1 rounded-md mb-4">${escapeHTML(e.subjectName || 'General Subject')}</p>
 
                             <div class="flex items-center text-sm text-slate-500 mb-4 font-medium">
                                 <i class="fa-regular fa-clock mr-2 text-slate-400"></i> ${e.durationMinutes} Minutes
@@ -78,50 +84,79 @@
                     `).join('');
                 }
             }
-        } catch (err) {
-            document.getElementById('availableExams').innerHTML = `<p class="text-red-500 font-bold bg-red-50 p-4 rounded-xl text-center border border-red-200">Network Error. Is the backend running?</p>`;
-        }
 
-        // --- 2. FETCH PAST RESULTS ---
-        try {
-            // Note: The backend searches by studentName, so we send user.username (which maps to name in login)
-            const resRes = await fetch(`http://localhost:8080/api/exam/results/student/${encodeURIComponent(user.username)}`);
-            const resDiv = document.getElementById('pastResults');
-
-            if (!resRes.ok) {
-                resDiv.innerHTML = `<p class="text-red-500 font-bold bg-red-50 p-4 rounded-xl text-center">Failed to load results.</p>`;
+            // --- PROCESS PAST RESULTS & ABSENT/MISSED EXAMS ---
+            if (!resRes.ok || !allExamsRes.ok) {
+                resDiv.innerHTML = `<p class="text-red-500 font-bold bg-red-50 p-4 rounded-xl text-center">Failed to load past results.</p>`;
             } else {
                 const results = await resRes.json();
+                const allExams = await allExamsRes.json();
 
-                if(!Array.isArray(results) || results.length === 0) {
+                const completedExamIds = new Set(results.map(r => r.examId || (r.exam && r.exam.id)));
+
+                let combinedHtml = '';
+
+                // 1. Render actual submitted results
+                results.forEach(r => {
+                    const pct = r.totalMarks > 0 ? Math.round((r.marksObtained / r.totalMarks) * 100) : 0;
+                    const isPass = pct >= 40;
+
+                    combinedHtml += `
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center hover:bg-slate-50 transition-colors">
+                        <div>
+                            <h3 class="font-bold text-slate-800">${escapeHTML(r.examTitle || 'Exam')}</h3>
+                            <p class="text-xs text-slate-400 mt-1"><i class="fa-solid fa-calendar-day mr-1"></i>${new Date(r.submissionTime || Date.now()).toLocaleDateString()}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xl font-black text-slate-700">${r.marksObtained}<span class="text-sm text-slate-400 font-bold">/${r.totalMarks}</span></p>
+                            <p class="text-xs font-bold ${isPass ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'} inline-block px-2 py-0.5 rounded-full mt-1">${pct}%</p>
+                        </div>
+                    </div>`;
+                });
+
+                // 2. Render expired/missed exams where student was absent
+                if (Array.isArray(allExams)) {
+                    allExams.forEach(exam => {
+                        const isTargetBranch = exam.departmentName && exam.departmentName.toLowerCase() === user.departmentName.toLowerCase() && exam.targetSemester === user.currentSemester;
+                        const isExpired = exam.endTime && new Date(exam.endTime) < now;
+                        const isSameCollege = !exam.collegeName || exam.collegeName.toLowerCase() === user.collegeName.toLowerCase();
+
+                        if (isTargetBranch && isExpired && isSameCollege && !completedExamIds.has(exam.id)) {
+                            combinedHtml += `
+                            <div class="bg-red-50/40 p-4 rounded-xl shadow-sm border border-red-100 flex justify-between items-center hover:bg-red-50/70 transition-colors">
+                                <div>
+                                    <h3 class="font-bold text-slate-800">${escapeHTML(exam.title)}</h3>
+                                    <p class="text-xs text-red-500 font-semibold mt-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Exam window expired</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-xl font-black text-red-600">0<span class="text-sm text-slate-400 font-bold">/0</span></p>
+                                    <p class="text-xs font-bold text-red-700 bg-red-100 inline-block px-2 py-0.5 rounded-full mt-1">ABSENT</p>
+                                </div>
+                            </div>`;
+                        }
+                    });
+                }
+
+                if(!combinedHtml) {
                     resDiv.innerHTML = '<p class="text-slate-500 font-bold bg-slate-100 p-4 rounded-xl text-center border border-slate-200">No past results found.</p>';
                 } else {
-                    resDiv.innerHTML = results.map(r => {
-                        const pct = Math.round((r.marksObtained / r.totalMarks) * 100);
-                        const isPass = pct >= 40; // Assuming 40% is passing
-
-                        return `
-                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center hover:bg-slate-50 transition-colors">
-                            <div>
-                                <h3 class="font-bold text-slate-800">${r.examTitle}</h3>
-                                <p class="text-xs text-slate-400 mt-1"><i class="fa-solid fa-calendar-day mr-1"></i>${new Date(r.submissionTime).toLocaleDateString()}</p>
-                            </div>
-                            <div class="text-right">
-                                <p class="text-xl font-black text-slate-700">${r.marksObtained}<span class="text-sm text-slate-400 font-bold">/${r.totalMarks}</span></p>
-                                <p class="text-xs font-bold ${isPass ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'} inline-block px-2 py-0.5 rounded-full mt-1">${pct}%</p>
-                            </div>
-                        </div>
-                        `;
-                    }).join('');
+                    resDiv.innerHTML = combinedHtml;
                 }
             }
+
         } catch (err) {
+            console.error(err);
+            document.getElementById('availableExams').innerHTML = `<p class="text-red-500 font-bold bg-red-50 p-4 rounded-xl text-center border border-red-200">Network Error.</p>`;
             document.getElementById('pastResults').innerHTML = `<p class="text-red-500 font-bold bg-red-50 p-4 rounded-xl text-center border border-red-200">Network Error.</p>`;
         }
     }
 
+    function escapeHTML(str) {
+        if (!str) return '';
+        return str.toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
     function takeExam(id) {
-        // Redirect to a dedicated exam-taking UI page
         window.location.href = `exam-player.html?id=${id}&rollNo=${user.rollNo}`;
     }
 

@@ -6,6 +6,7 @@
     <title>HOD Dashboard | IGen</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; background: #f8fafc; }
         .modal-overlay { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
@@ -25,6 +26,9 @@
         <p id="deptHeader" class="text-purple-600 font-bold mt-1 text-sm"></p>
     </div>
     <div class="flex gap-3">
+        <button onclick="openModal('archiveModal'); loadArchives();" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all text-sm flex items-center gap-2 shadow-sm">
+            <i class="fa-solid fa-box-archive"></i> View Archives
+        </button>
         <button onclick="localStorage.removeItem('currentUser'); window.location.replace('login.html');" class="bg-red-50 text-red-600 hover:bg-red-100 px-5 py-2.5 rounded-xl font-bold text-sm transition-all">
             Logout
         </button>
@@ -65,6 +69,74 @@
             <button onclick="executeBranchTermIncrement()" id="runSemBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-sm flex items-center gap-2">
                 <i class="fa-solid fa-calendar-plus"></i> Increment Branch Semesters Only
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- RESULTS & ANALYTICS MODAL WITH PRINT BUTTON -->
+<div id="resultsModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-[1.5rem] shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col md:flex-row max-h-[85vh]">
+        <div class="w-full md:w-2/3 flex flex-col bg-white">
+            <div class="flex justify-between items-center p-6 border-b border-slate-100">
+                <h3 id="resModalTitle" class="text-xl font-bold text-slate-800">Exam Results</h3>
+                <div class="flex items-center gap-3">
+                    <button onclick="printResults()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl font-bold text-sm transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-print"></i> Print
+                    </button>
+                    <button onclick="closeModal('resultsModal')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+            </div>
+            <div class="overflow-y-auto flex-1 p-6">
+                <div id="printableTableArea">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                        <tr class="text-slate-500 text-xs font-bold uppercase tracking-widest bg-slate-50">
+                            <th class="p-3 rounded-l-lg">Roll No</th>
+                            <th class="p-3">Name</th>
+                            <th class="p-3 text-right">Score</th>
+                            <th class="p-3 text-right rounded-r-lg">%</th>
+                        </tr>
+                        </thead>
+                        <tbody id="resTableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="w-full md:w-1/3 bg-slate-50 p-6 border-l border-slate-100 flex flex-col items-center justify-start overflow-y-auto">
+            <h4 class="font-bold text-slate-700 mb-6">Class Performance Metrics</h4>
+            <div class="w-48 h-48 mb-8 relative"><canvas id="analyticsChart"></canvas></div>
+            <div id="absentBadge" class="bg-red-100 text-red-700 font-bold px-4 py-3 rounded-xl text-sm w-full text-center mb-6 border border-red-200">0 Students Absent</div>
+            <div class="w-full border-t border-slate-200 pt-6 mt-auto">
+                <button onclick="analyzeDifficulty()" id="analyzeBtn" class="bg-[#f59e0b] hover:bg-[#d97706] text-white px-4 py-3.5 rounded-xl font-bold transition-all w-full text-sm shadow-md flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-lightbulb"></i> Analyze High-Failure Questions
+                </button>
+                <div id="analysisResultArea" class="mt-4 space-y-3 w-full"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ARCHIVES MODAL -->
+<div id="archiveModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl w-full max-w-2xl p-6 shadow-2xl">
+        <h3 class="text-xl font-bold mb-4 text-slate-800"><i class="fa-solid fa-box-archive text-purple-600 mr-2"></i>Departmental Exam Archives</h3>
+        <div id="archiveList" class="space-y-3 max-h-[60vh] overflow-y-auto"></div>
+        <button onclick="closeModal('archiveModal')" class="mt-6 w-full bg-slate-100 hover:bg-slate-200 py-3 rounded-xl font-bold">Close</button>
+    </div>
+</div>
+
+<!-- SECURE DELETE MODAL -->
+<div id="deleteModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 text-center">
+        <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-4"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <h3 class="text-xl font-bold text-slate-900 mb-2">Secure Archive & Delete</h3>
+        <p class="text-sm text-slate-500 mb-4">Enter your profile password to verify. Student records will be permanently bundled into a secure PDF archive before local deletion.</p>
+        <input type="password" id="deletePassword" placeholder="Your Password" class="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-red-500 mb-4">
+        <p id="deleteErr" class="text-red-500 text-sm font-bold hidden mb-4"></p>
+        <div class="flex gap-3">
+            <button onclick="closeModal('deleteModal')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-colors">Cancel</button>
+            <button onclick="confirmDelete()" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors">Archive & Delete</button>
         </div>
     </div>
 </div>
@@ -212,6 +284,9 @@
     document.getElementById('deptHeader').innerText = `${escapeHTML(branchName)} | ${escapeHTML(user.collegeName || 'Tech Institute')}`;
 
     let generatedExamData = [];
+    let currentChart = null;
+    let currentViewExamId = null;
+    let targetDeleteExamId = null;
 
     function openModal(id) {
         document.getElementById(id).classList.remove('hidden');
@@ -251,24 +326,266 @@
         if(tab === 'staff-approval') { loadPendingStaff(); loadActiveStaff(); }
     }
 
-    // LOAD BRANCH EXAMS
+    // LOAD BRANCH EXAMS USING UNIVERSAL ENDPOINT AND FRONTEND BRANCH FILTER
     async function loadBranchExams() {
         const grid = document.getElementById('examGrid');
         grid.innerHTML = '<p class="text-xs text-slate-400 col-span-full">Syncing exams...</p>';
         try {
-            const res = await fetch(`http://localhost:8080/api/hod/exams?branchName=${encodeURIComponent(branchName)}`);
-            const exams = await res.json();
-            grid.innerHTML = exams.map(e => `
-                <div class="bg-white border rounded-2xl p-5 shadow-sm flex flex-col h-full">
-                    <h3 class="font-bold text-slate-800 text-md mb-1 truncate">${escapeHTML(e.title)}</h3>
-                    <p class="text-[10px] font-bold text-purple-600 uppercase mb-4 tracking-wider">Sem ${e.targetSemester} | ${escapeHTML(e.subjectName || 'General')}</p>
-                    <div class="text-xs text-slate-500 space-y-1 mb-4 border-t pt-3">
-                        <p><i class="fa-regular fa-clock text-purple-500 mr-1"></i> ${e.durationMinutes} Mins</p>
-                        <p class="truncate"><i class="fa-regular fa-user text-slate-400 mr-1"></i> ${escapeHTML(e.createdByTeacherUsername || 'Instructor')}</p>
+            const res = await fetch(`http://localhost:8080/api/exam/all`);
+            const allExams = await res.json();
+
+            const exams = allExams.filter(exam =>
+                exam.departmentName && exam.departmentName.toLowerCase() === branchName.toLowerCase()
+            );
+
+            grid.innerHTML = exams.map(exam => {
+                const safeSubject = (exam.subjectName && exam.subjectName !== 'null') ? exam.subjectName : 'General';
+                const creator = exam.createdByTeacherUsername || 'Unknown';
+                const startTime = exam.startTime ? new Date(exam.startTime).toLocaleString() : 'N/A';
+                const endTime = exam.endTime ? new Date(exam.endTime).toLocaleString() : 'N/A';
+                const isVisible = exam.visibleToStudents;
+
+                return `
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col h-full hover:shadow-md transition-shadow relative">
+                    <div class="flex justify-between items-start mb-1">
+                        <h3 class="text-lg font-bold text-slate-800 leading-tight pr-2">${escapeHTML(exam.title)}</h3>
+                        <div class="flex items-center gap-2">
+                            <button onclick="toggleVisibility(${exam.id})" class="text-slate-400 hover:text-blue-500 transition-colors" title="Toggle Visibility"><i class="fa-solid ${isVisible ? 'fa-eye text-blue-500' : 'fa-eye-slash text-slate-400'}"></i></button>
+                            <button onclick="openDeleteModal(${exam.id})" class="text-slate-400 hover:text-red-500 transition-colors" title="Delete Exam"><i class="fa-solid fa-trash"></i></button>
+                        </div>
                     </div>
-                </div>
-            `).join('') || '<p class="text-xs text-slate-400 col-span-full">No tests declared in this department yet.</p>';
+                    <p class="text-[11px] font-semibold text-slate-500 mb-3 uppercase tracking-wider">
+                        Sem ${exam.targetSemester} <span class="text-slate-300 mx-1">|</span> ${escapeHTML(safeSubject)}
+                    </p>
+
+                    <div class="text-xs text-slate-500 space-y-1.5 mb-6 border-t border-slate-100 pt-4">
+                        <p><i class="fa-regular fa-clock w-4 text-purple-500"></i> ${exam.durationMinutes} Mins</p>
+                        <p><i class="fa-regular fa-calendar-alt w-4 text-purple-500"></i> Start: ${startTime}</p>
+                        <p><i class="fa-regular fa-calendar-times w-4 text-red-400"></i> End: ${endTime}</p>
+                        <p class="truncate"><i class="fa-regular fa-user w-4 text-slate-400"></i> ${escapeHTML(creator)}</p>
+                    </div>
+
+                    <div class="mt-auto">
+                        <button onclick="viewResults(${exam.id}, '${escapeHTML(exam.title).replace(/'/g, "\\'")}')" class="w-full bg-purple-50 text-purple-700 hover:bg-purple-600 hover:text-white font-bold py-2.5 rounded-xl transition-colors text-sm">
+                            View Analytics Dashboard
+                        </button>
+                    </div>
+                </div>`;
+            }).join('') || '<p class="text-xs text-slate-400 col-span-full">No tests declared in this department yet.</p>';
         } catch(e) { grid.innerHTML = '<p class="text-xs text-red-500 col-span-full">Failed to sync exams.</p>'; }
+    }
+
+    async function toggleVisibility(id) {
+        try {
+            await fetch(`http://localhost:8080/api/exam/teacher/${id}/toggle-visibility`, { method: 'PUT' });
+            loadBranchExams();
+        } catch(e) {
+            alert("Failed to toggle exam visibility.");
+        }
+    }
+
+    function openDeleteModal(id) {
+        targetDeleteExamId = id;
+        document.getElementById('deleteErr').classList.add('hidden');
+        document.getElementById('deletePassword').value = '';
+        openModal('deleteModal');
+    }
+
+    async function confirmDelete() {
+        const pwd = document.getElementById('deletePassword').value;
+        const err = document.getElementById('deleteErr');
+        if (!pwd) {
+            err.innerText = "Verification signature required.";
+            err.classList.remove('hidden');
+            return;
+        }
+
+        try {
+            const res = await fetch(`http://localhost:8080/api/exam/archive-delete/${targetDeleteExamId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    password: pwd,
+                    username: user.email || user.username || "HOD Admin"
+                })
+            });
+
+            if (res.ok) {
+                closeModal('deleteModal');
+                loadBranchExams();
+            } else {
+                const data = await res.json();
+                err.innerText = data.error || "Profile validation credentials incorrect.";
+                err.classList.remove('hidden');
+            }
+        } catch (e) {
+            console.error(e);
+            err.innerText = "Error: Could not reach server.";
+            err.classList.remove('hidden');
+        }
+    }
+
+    const safeExtract = (val, fallback) => (val === undefined || val === null || val === 'undefined' || String(val).trim() === '') ? fallback : val;
+
+    async function viewResults(id, title) {
+        currentViewExamId = id;
+        document.getElementById('resModalTitle').innerText = title;
+        document.getElementById('analysisResultArea').innerHTML = '';
+        openModal('resultsModal');
+
+        const tbody = document.getElementById('resTableBody');
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4"><i class="fa-solid fa-spinner fa-spin text-slate-400"></i></td></tr>';
+
+        try {
+            const [resData, statsData] = await Promise.all([
+                fetch(`http://localhost:8080/api/exam/results/exam/${id}`).then(r => r.json()),
+                fetch(`http://localhost:8080/api/exam/${id}/analytics`).then(r => r.json())
+            ]);
+
+            tbody.innerHTML = resData.map(r => {
+                const student = r.student || {};
+                const roll = safeExtract(student.rollNo, safeExtract(student.prnNo, safeExtract(r.rollNo, "N/A")));
+                const name = safeExtract(student.name, safeExtract(r.studentName, safeExtract(r.name, "Unknown Student")));
+                const percentage = r.totalMarks > 0 ? Math.round((r.marksObtained / r.totalMarks) * 100) : 0;
+
+                return `
+                <tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                    <td class="p-3 text-sm text-slate-500 font-mono">${escapeHTML(roll)}</td>
+                    <td class="p-3 text-sm font-medium text-slate-800">${escapeHTML(name)}</td>
+                    <td class="p-3 text-sm text-right font-bold text-purple-600">${r.marksObtained}/${r.totalMarks}</td>
+                    <td class="p-3 text-sm text-right font-black text-slate-900">${percentage}%</td>
+                </tr>`;
+            }).join('');
+
+            if (resData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-slate-400 font-bold">No submissions recorded yet.</td></tr>';
+            }
+
+            document.getElementById('absentBadge').innerText = `${statsData.absent || 0} Students Absent`;
+
+            if(currentChart) currentChart.destroy();
+            currentChart = new Chart(document.getElementById('analyticsChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Passed', 'Failed'],
+                    datasets: [{
+                        data: [statsData.passed || 0, statsData.failed || 0],
+                        backgroundColor: ['#10b981', '#ef4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '75%',
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+                }
+            });
+        } catch(e) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500 font-bold">Failed to load data. See console.</td></tr>';
+        }
+    }
+
+    function printResults() {
+        const title = document.getElementById('resModalTitle').innerText;
+        const tableHtml = document.getElementById('printableTableArea').innerHTML;
+        const printWin = window.open('', '', 'height=600,width=800');
+        printWin.document.write('<html><head><title>Print ' + title + '</title>');
+        printWin.document.write(`
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+                h2 { text-align: center; border-bottom: 2px solid #ccc; padding-bottom: 10px; margin-bottom: 20px;}
+                table { width: 100%; border-collapse: collapse; }
+                th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+                th { background-color: #f8f9fa; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+                td:nth-child(3), th:nth-child(3), td:nth-child(4), th:nth-child(4) { text-align: right; }
+            </style>
+        `);
+        printWin.document.write('</head><body><h2>IGen: ' + title + '</h2>' + tableHtml + '</body></html>');
+        printWin.document.close();
+        printWin.focus();
+        setTimeout(() => { printWin.print(); printWin.close(); }, 250);
+    }
+
+    async function analyzeDifficulty() {
+        if(!currentViewExamId) return;
+
+        const btn = document.getElementById('analyzeBtn');
+        const area = document.getElementById('analysisResultArea');
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Analyzing...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch(`http://localhost:8080/api/exam/${currentViewExamId}/hardest-questions`);
+            const data = await res.json();
+
+            if(data.length === 0) {
+                area.innerHTML = '<p class="text-sm text-slate-500 text-center font-bold mt-2 bg-slate-100 p-4 rounded-xl">No failure data recorded yet (100% Pass Rate).</p>';
+                return;
+            }
+
+            let html = '<h5 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 mt-4">High-Failure Question Warning</h5>';
+            data.slice(0, 3).forEach(q => {
+                html += `
+                <div class="bg-red-50 p-3 rounded-xl border border-red-200 mb-2 shadow-sm">
+                    <p class="font-bold text-red-900 text-xs mb-2 leading-snug">${escapeHTML(q[0])}</p>
+                    <p class="text-[10px] font-bold text-red-700 bg-red-100 inline-block px-2.5 py-1 rounded-md">
+                        <i class="fa-solid fa-users-slash mr-1"></i>Incorrect: ${q[1]} Students
+                    </p>
+                </div>`;
+            });
+            area.innerHTML = html;
+        } catch (e) {
+            area.innerHTML = '<p class="text-sm text-red-500 font-bold bg-red-50 p-3 rounded-lg">Error rendering failure blocks.</p>';
+        } finally {
+            btn.innerHTML = '<i class="fa-solid fa-lightbulb"></i> Analyze High-Failure Questions';
+            btn.disabled = false;
+        }
+    }
+
+    // ARCHIVES LOADING
+    async function loadArchives() {
+        const list = document.getElementById('archiveList');
+        list.innerHTML = '<p class="text-center text-slate-400 py-4"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading departmental archives...</p>';
+
+        try {
+            const res = await fetch('http://localhost:8080/api/exam/all-archives');
+            const data = await res.json();
+
+            list.innerHTML = data.length ? data.map(a => `
+            <div class="flex justify-between items-center p-4 border rounded-xl mb-2 bg-slate-50">
+                <div class="flex flex-col">
+                    <span class="font-bold text-slate-800">${escapeHTML(a.examTitle)}</span>
+                    <span class="text-[10px] text-slate-400">Archived by: ${escapeHTML(a.archivedByUsername)}</span>
+                </div>
+                <button onclick="downloadArchive(${a.id})" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 transition-colors">
+                    Download Vault File
+                </button>
+            </div>
+        `).join('') : '<p class="text-center text-slate-500 mt-4 font-bold bg-slate-50 p-4 rounded-xl">No archives found.</p>';
+
+        } catch(e) {
+            console.error(e);
+            list.innerHTML = '<p class="text-center text-red-500 mt-4">Error loading archives.</p>';
+        }
+    }
+
+    async function downloadArchive(id) {
+        const pwd = prompt("Enter security credentials to authorize export:");
+        if(!pwd) return;
+        try {
+            const res = await fetch(`http://localhost:8080/api/exam/retrieve-archive/${id}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pwd, username: user.email || user.username || "HOD Admin" })
+            });
+            if(res.ok) {
+                const blob = await res.blob();
+                const a = document.createElement('a'); a.href = window.URL.createObjectURL(blob); a.download = `ArchivedExam_${id}.pdf`; a.click();
+            } else {
+                alert("Authorization context exception: Cryptographic signature mismatch.");
+            }
+        } catch(e) {
+            alert("Error connecting to archive retrieval server.");
+        }
     }
 
     // STAFF DIRECTORY QUEUES
@@ -381,7 +698,7 @@
         }
     }
 
-    // EXAM COMPILATION PIPELINE
+    // EXAM COMPILATION PIPELINE (WITH CUSTOM MARKS SUPPORT & OPTION RENDERING)
     function addQuestionToMemory() {
         const qText = document.getElementById('manQText').value.trim();
         const optA = document.getElementById('manOptA').value.trim();
@@ -409,6 +726,15 @@
         renderQuestionBlueprintPreview();
     }
 
+    function updateQuestionMarks(index, newMarks) {
+        generatedExamData[index].marks = parseInt(newMarks) || 1;
+    }
+
+    function removeQuestion(index) {
+        generatedExamData.splice(index, 1);
+        renderQuestionBlueprintPreview();
+    }
+
     function renderQuestionBlueprintPreview() {
         const container = document.getElementById('resultsContainer');
         const listDiv = document.getElementById('mcqList');
@@ -416,12 +742,33 @@
 
         document.getElementById('qCountBadge').innerText = `${generatedExamData.length} Cards`;
         container.classList.remove('hidden');
-        listDiv.innerHTML = generatedExamData.map((q, idx) => `
-            <div class="p-3 border rounded-xl bg-slate-50 relative pr-10 text-xs">
-                <p class="font-bold text-slate-800 mb-1">Q${idx+1}. ${escapeHTML(q.questionText)}</p>
-                <p class="text-[10px] text-emerald-700 bg-emerald-50 inline-block px-1.5 rounded border border-emerald-100 font-medium">Ans: ${escapeHTML(q.correctAnswer)}</p>
-            </div>
-        `).join('');
+
+        listDiv.innerHTML = generatedExamData.map((mcq, i) => {
+            const options = Array.isArray(mcq.options) ? mcq.options : [];
+            const currentMarks = mcq.marks || 1;
+
+            let optionsHtml = options.map((opt, idx) => `
+                <div class="text-[11px] text-slate-600 pl-3 py-0.5 ${opt === mcq.correctAnswer ? 'font-bold text-emerald-600 bg-emerald-50 rounded' : ''}">
+                    ${String.fromCharCode(65 + idx)}. ${escapeHTML(opt)} ${opt === mcq.correctAnswer ? '<i class="fa-solid fa-check ml-1 text-emerald-600"></i>' : ''}
+                </div>
+            `).join('');
+
+            return `
+            <div class="p-4 border border-slate-200 rounded-xl bg-slate-50 relative pr-12 text-xs mb-3">
+                <button onclick="removeQuestion(${i})" type="button" class="absolute top-4 right-4 text-red-400 hover:text-red-600 transition-colors" title="Delete Question">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+                <p class="font-bold text-slate-800 mb-2 text-sm">Q${i+1}. ${escapeHTML(mcq.questionText)}</p>
+                <div class="space-y-1 mb-3">${optionsHtml}</div>
+                <div class="flex items-center justify-between mt-3 pt-2 border-t border-slate-200">
+                    <p class="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded border border-emerald-200">Correct: ${escapeHTML(mcq.correctAnswer)}</p>
+                    <div class="flex items-center gap-1 bg-white border border-slate-200 rounded px-2 py-1">
+                        <label class="text-[11px] font-bold text-slate-500 uppercase">Marks:</label>
+                        <input type="number" min="1" value="${currentMarks}" onchange="updateQuestionMarks(${i}, this.value)" class="w-12 text-xs text-center outline-none font-bold text-purple-600 bg-transparent">
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
     }
 
     async function commitExamToDatabase() {
@@ -439,14 +786,25 @@
         btn.disabled = true; btn.innerText = "Syncing terminal metadata...";
 
         const payload = {
-            title: title, subjectName: subj, targetSemester: parseInt(sem),
-            durationMinutes: parseInt(dur), startTime: start, endTime: end,
-            createdByTeacherUsername: user.username || "HOD Admin",
-            questions: generatedExamData
+            title: title,
+            subjectName: subj,
+            targetSemester: parseInt(sem),
+            durationMinutes: parseInt(dur),
+            startTime: start,
+            endTime: end,
+            status: "PUBLISHED",
+            departmentName: branchName,
+            createdByTeacherUsername: user.username || user.email || "HOD Admin",
+            questions: generatedExamData.map(q => ({
+                questionText: q.questionText,
+                options: q.options,
+                correctAnswer: q.correctAnswer,
+                marks: q.marks || 1
+            }))
         };
 
         try {
-            const res = await fetch(`http://localhost:8080/api/hod/exams/save?branchName=${encodeURIComponent(branchName)}`, {
+            const res = await fetch(`http://localhost:8080/api/exam/teacher/save?username=${encodeURIComponent(user.username || user.email || 'HOD')}`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
@@ -456,7 +814,7 @@
                 closeModal('createExamModal');
                 loadBranchExams();
             } else { alert("Failed to save branch blueprint mapping structure."); }
-        } catch(e) { alert("Server error connection."); }
+        } catch(e) { alert("Error server connection."); }
         finally { btn.disabled = false; btn.innerText = "Publish Exam to Live Department Terminal"; }
     }
 

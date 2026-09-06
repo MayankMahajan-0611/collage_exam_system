@@ -13,6 +13,9 @@ public interface TeacherRepository extends JpaRepository<Teacher, Long> {
     // For Login and Validation
     Optional<Teacher> findByUsername(String username);
 
+    //Required for the principal fallback mechanism
+    List<Teacher> findByIsPrincipalTrue();
+
     // For Principal Dashboard: Fetching all teachers in their specific college
     List<Teacher> findByCollegeNameAndIsPrincipalFalse(String collegeName);
 
@@ -30,4 +33,5 @@ public interface TeacherRepository extends JpaRepository<Teacher, Long> {
 
     // REQUIRED FOR HOD CONTROLLER: Fetches pending teachers filtered by both College AND Branch
     List<Teacher> findByCollegeNameAndBranchNameAndIsPrincipalFalseAndIsApprovedFalse(String collegeName, String branchName);
+
 }
